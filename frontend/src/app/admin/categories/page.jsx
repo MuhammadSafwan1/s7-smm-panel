@@ -1,0 +1,379 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { db } from '@/firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import toast from 'react-hot-toast';
+import { FiPlus, FiEdit2, FiTrash2, FiLayers, FiUpload, FiX, FiLink } from 'react-icons/fi';
+
+// Same icon upload component as platforms
+function IconUpload({ value, onChange }) {
+  const inputRef = useRef();
+  const [mode, setMode] = useState('upload');
+  const [urlInput, setUrlInput] = useState('');
+  const [converting, setConverting] = useState(false);
+
+  const compressAndConvert = (file) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 256;
+        let { width, height } = img;
+        if (width > height) {
+          if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; }
+        } else {
+          if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/png', 0.85));
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+
+  const handleFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Select an image file'); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error('Image must be under 2MB'); return; }
+
+    setConverting(true);
+    try {
+      if (file.type === 'image/gif') {
+        const reader = new FileReader();
+        reader.onload = () => { onChange(reader.result); toast.success('GIF icon ready!'); setConverting(false); };
+        reader.onerror = () => { toast.error('Failed to read GIF'); setConverting(false); };
+        reader.readAsDataURL(file);
+        return;
+      }
+      const base64 = await compressAndConvert(file);
+      onChange(base64);
+      toast.success('Icon ready!');
+    } catch { toast.error('Failed to process image'); }
+    finally { if (file.type !== 'image/gif') setConverting(false); e.target.value = ''; }
+  };
+
+  const handleUrlSave = () => {
+    if (!urlInput.trim()) return;
+    onChange(urlInput.trim());
+    setUrlInput('');
+    toast.success('Icon URL saved!');
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setMode('upload')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'upload' ? 'bg-primary-500 text-white shadow-md' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
+          <FiUpload /> Upload File
+        </button>
+        <button type="button" onClick={() => setMode('url')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'url' ? 'bg-primary-500 text-white shadow-md' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
+          <FiLink /> Paste URL
+        </button>
+      </div>
+
+      {mode === 'upload' && !value && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-900/30 border border-green-700/40 text-green-400 text-sm">
+          <FiUpload className="flex-shrink-0" />
+          <span>Select image from device (converted to base64, no external service needed)</span>
+        </div>
+      )}
+
+      {mode === 'url' && !value && (
+        <div className="flex gap-2">
+          <input type="url" placeholder="https://example.com/icon.png" value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleUrlSave())}
+            className="flex-1 px-3 py-2.5 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm text-dark-900 dark:text-white" />
+          <button type="button" onClick={handleUrlSave} disabled={!urlInput.trim()}
+            className="px-4 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+            Save
+          </button>
+        </div>
+      )}
+
+      {value ? (
+        <div className="flex items-center gap-3 p-3 rounded-xl border-2 border-green-500/30 bg-green-50 dark:bg-green-900/20">
+          <img src={value} alt="icon" className="w-14 h-14 rounded-xl object-contain bg-white dark:bg-dark-800 p-1 border border-dark-200 dark:border-dark-700" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-green-700 dark:text-green-400">✓ Icon ready</p>
+            <p className="text-xs text-dark-400 mt-0.5">{value.startsWith('data:') ? 'Base64 encoded' : 'URL image'}</p>
+          </div>
+          <button type="button" onClick={() => onChange('')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"><FiX /></button>
+        </div>
+      ) : mode === 'upload' ? (
+        <>
+          <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+          <button type="button" onClick={() => inputRef.current.click()} disabled={converting}
+            className="w-full flex flex-col items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed border-dark-300 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 bg-dark-50 dark:bg-dark-800 transition-colors cursor-pointer">
+            {converting ? (
+              <><div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" /><span className="text-sm text-dark-500">Converting...</span></>
+            ) : (
+              <><FiUpload className="text-3xl text-dark-400" /><span className="text-sm font-medium text-dark-600 dark:text-dark-300">Click to select image or GIF</span><span className="text-xs text-dark-400">PNG, JPG, SVG, GIF, WebP — max 2MB</span></>
+            )}
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export default function CategoriesPage() {
+  const [categories, setCategories] = useState([]);
+  const [platforms, setPlatforms] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [selectedPlatform, setSelectedPlatform] = useState('all');
+
+  const [form, setForm] = useState({
+    name: '',
+    platformId: '',
+    icon: '',
+    description: '',
+    isActive: true,
+  });
+
+  useEffect(() => { fetchData(); }, []);
+
+  const fetchData = async () => {
+    try {
+      const [catSnap, platSnap] = await Promise.all([
+        getDocs(collection(db, 'categories')),
+        getDocs(collection(db, 'platforms')),
+      ]);
+      setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setPlatforms(platSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) { console.error(e); }
+  };
+
+  const openAdd = () => {
+    setEditingCategory(null);
+    setForm({ name: '', platformId: platforms[0]?.id || '', icon: '', description: '', isActive: true });
+    setShowModal(true);
+  };
+
+  const openEdit = (cat) => {
+    setEditingCategory(cat);
+    setForm({ name: cat.name, platformId: cat.platformId, icon: cat.icon || '', description: cat.description || '', isActive: cat.isActive });
+    setShowModal(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) { toast.error('Category name is required'); return; }
+    if (!form.platformId) { toast.error('Please select a platform'); return; }
+    setSaving(true);
+    try {
+      const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const data = { ...form, slug, updatedAt: Timestamp.now() };
+      if (editingCategory) {
+        await updateDoc(doc(db, 'categories', editingCategory.id), data);
+        toast.success('Category updated');
+      } else {
+        await addDoc(collection(db, 'categories'), { ...data, sortOrder: categories.length, createdAt: Timestamp.now() });
+        toast.success('Category added');
+      }
+      setShowModal(false);
+      fetchData();
+    } catch (err) { toast.error(err.message || 'Failed to save'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id, name) => {
+    const snap = await getDocs(collection(db, 'services'));
+    if (snap.docs.some(d => d.data().categoryId === id)) { toast.error('Delete services in this category first'); return; }
+    if (!confirm(`Delete "${name}"?`)) return;
+    await deleteDoc(doc(db, 'categories', id));
+    toast.success('Category deleted');
+    fetchData();
+  };
+
+  const toggleActive = async (cat) => {
+    await updateDoc(doc(db, 'categories', cat.id), { isActive: !cat.isActive, updatedAt: Timestamp.now() });
+    fetchData();
+  };
+
+  const getPlatform = (id) => platforms.find(p => p.id === id);
+
+  const filtered = selectedPlatform === 'all' ? categories : categories.filter(c => c.platformId === selectedPlatform);
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-dark-900 dark:text-white mb-1">Category Management</h2>
+          <p className="text-dark-500 dark:text-dark-400 text-sm">Organize services by category per platform</p>
+        </div>
+        <button onClick={openAdd} disabled={platforms.length === 0} className="btn-primary flex items-center gap-2">
+          <FiPlus /> Add Category
+        </button>
+      </div>
+
+      {platforms.length === 0 && (
+        <div className="glass-card p-5 mb-6 border border-yellow-500/30 bg-yellow-500/10">
+          <p className="text-yellow-300 text-sm">Create platforms first before adding categories.</p>
+        </div>
+      )}
+
+      {/* Platform Filter */}
+      {platforms.length > 0 && (
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <button onClick={() => setSelectedPlatform('all')} className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${selectedPlatform === 'all' ? 'bg-primary-500 text-white' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
+            All ({categories.length})
+          </button>
+          {platforms.map(p => (
+            <button key={p.id} onClick={() => setSelectedPlatform(p.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${selectedPlatform === p.id ? 'text-white' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}
+              style={selectedPlatform === p.id ? { backgroundColor: p.color || '#6366f1' } : {}}>
+              {p.icon && <img src={p.icon} alt={p.name} className="w-4 h-4 rounded object-contain" />}
+              {p.name} ({categories.filter(c => c.platformId === p.id).length})
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Grid */}
+      {filtered.length === 0 ? (
+        <div className="glass-card p-16 text-center">
+          <FiLayers className="text-5xl text-dark-300 dark:text-dark-600 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-dark-900 dark:text-white mb-2">No Categories</h3>
+          <p className="text-dark-500 mb-6">{selectedPlatform === 'all' ? 'Add your first category' : 'No categories for this platform'}</p>
+          {platforms.length > 0 && selectedPlatform === 'all' && (
+            <button onClick={openAdd} className="btn-primary"><FiPlus className="inline mr-2" />Add Category</button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {filtered.map((cat) => {
+            const platform = getPlatform(cat.platformId);
+            return (
+              <div key={cat.id} className="glass-card p-5 hover:shadow-xl transition-all"
+                style={{ borderTop: `4px solid ${platform?.color || '#6366f1'}` }}>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    {cat.icon ? (
+                      <img src={cat.icon} alt={cat.name} className="w-11 h-11 rounded-xl object-contain bg-white dark:bg-dark-800 p-1 border border-dark-200 dark:border-dark-700" />
+                    ) : (
+                      <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-lg"
+                        style={{ backgroundColor: platform?.color || '#6366f1' }}>
+                        {cat.name[0]}
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-dark-900 dark:text-white">{cat.name}</h3>
+                      {platform && (
+                        <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: platform.color || '#6366f1' }}>
+                          {platform.name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${cat.isActive ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'}`}>
+                    {cat.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                {cat.description && <p className="text-xs text-dark-500 mb-3">{cat.description}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => toggleActive(cat)} className={`btn-sm ${cat.isActive ? 'btn-secondary' : 'btn-primary'}`}>
+                    {cat.isActive ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button onClick={() => openEdit(cat)} className="btn-outline btn-sm flex items-center justify-center gap-1">
+                    <FiEdit2 /> Edit
+                  </button>
+                </div>
+                <button onClick={() => handleDelete(cat.id, cat.name)}
+                  className="w-full mt-2 btn-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 border border-red-200 dark:border-red-800 rounded-lg py-1.5">
+                  <FiTrash2 className="inline mr-1" /> Delete
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-dark-200 dark:border-dark-700">
+              <h3 className="text-xl font-bold text-dark-900 dark:text-white">
+                {editingCategory ? 'Edit Category' : 'Add New Category'}
+              </h3>
+              <button type="button" onClick={() => setShowModal(false)}
+                className="w-8 h-8 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 flex items-center justify-center text-dark-500 text-xl">×</button>
+            </div>
+
+            <form onSubmit={handleSave} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Platform */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Platform *</label>
+                <select required value={form.platformId} onChange={(e) => setForm({ ...form, platformId: e.target.value })}
+                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white">
+                  <option value="">Select Platform</option>
+                  {platforms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              {/* Category Name */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Category Name *</label>
+                <input type="text" required placeholder="e.g., Followers, Likes, Views"
+                  value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
+              </div>
+
+              {/* Icon Upload */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Icon / GIF</label>
+                <IconUpload value={form.icon} onChange={(url) => setForm({ ...form, icon: url })} />
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Status</label>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setForm({ ...form, isActive: true })}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${form.isActive ? 'border-green-500 bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-green-400'}`}>
+                    ● Active
+                  </button>
+                  <button type="button" onClick={() => setForm({ ...form, isActive: false })}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${!form.isActive ? 'border-red-500 bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-red-400'}`}>
+                    ○ Inactive
+                  </button>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Description</label>
+                <textarea rows="2" placeholder="e.g., Get real Instagram followers fast"
+                  value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white resize-none" />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowModal(false)} disabled={saving}
+                  className="flex-1 py-3 rounded-xl border-2 border-dark-200 dark:border-dark-700 text-dark-700 dark:text-dark-300 font-semibold hover:bg-dark-50 dark:hover:bg-dark-800 transition-all">
+                  Cancel
+                </button>
+                <button type="submit" disabled={saving}
+                  className="flex-1 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold transition-all disabled:opacity-60">
+                  {saving ? 'Saving...' : editingCategory ? 'Update' : 'Add Category'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Allow everything for now (admin panel uses localStorage auth, not Firebase Auth)
+    match /{document=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

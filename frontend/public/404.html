@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FFMarket - Free Fire Marketplace</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        // Redirect all routes to index.html for SPA routing
+        var url = window.location.pathname;
+        if (!url.includes('.')) {
+            window.location.href = '/';
+        }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+    <script src="/_next/static/chunks/main.js"></script>
+</body>
+</html>

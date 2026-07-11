@@ -1,0 +1,426 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { db } from '@/firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import toast from 'react-hot-toast';
+import { FiPlus, FiEdit2, FiTrash2, FiImage, FiUpload, FiX, FiLink } from 'react-icons/fi';
+
+function IconUpload({ value, onChange }) {
+  const inputRef = useRef();
+  const [mode, setMode] = useState('upload'); // 'upload' | 'url'
+  const [urlInput, setUrlInput] = useState('');
+  const [converting, setConverting] = useState(false);
+
+  const toBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  // Compress image to max 200x200 and convert to base64
+  const compressAndConvert = (file) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 256;
+        let { width, height } = img;
+        if (width > height) {
+          if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; }
+        } else {
+          if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/png', 0.85));
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+
+  const handleFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Select an image file');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Image must be under 2MB');
+      return;
+    }
+
+    setConverting(true);
+    try {
+      // GIFs: keep as-is (base64 without canvas compression to preserve animation)
+      if (file.type === 'image/gif') {
+        const reader = new FileReader();
+        reader.onload = () => {
+          onChange(reader.result);
+          toast.success('GIF icon ready!');
+          setConverting(false);
+        };
+        reader.onerror = () => {
+          toast.error('Failed to read GIF');
+          setConverting(false);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // All other images: compress to 256x256
+      const base64 = await compressAndConvert(file);
+      onChange(base64);
+      toast.success('Icon ready!');
+    } catch (err) {
+      toast.error('Failed to process image');
+    } finally {
+      if (file.type !== 'image/gif') setConverting(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleUrlSave = () => {
+    if (!urlInput.trim()) return;
+    onChange(urlInput.trim());
+    setUrlInput('');
+    toast.success('Icon URL saved!');
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* Toggle buttons */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setMode('upload')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            mode === 'upload'
+              ? 'bg-primary-500 text-white shadow-md'
+              : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'
+          }`}
+        >
+          <FiUpload /> Upload File
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('url')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            mode === 'url'
+              ? 'bg-primary-500 text-white shadow-md'
+              : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'
+          }`}
+        >
+          <FiLink /> Paste URL
+        </button>
+      </div>
+
+      {/* Upload mode info */}
+      {mode === 'upload' && !value && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-900/30 border border-green-700/40 text-green-400 text-sm">
+          <FiUpload className="flex-shrink-0" />
+          <span>Select image from your device (converted to base64, no external service needed)</span>
+        </div>
+      )}
+
+      {/* URL mode */}
+      {mode === 'url' && !value && (
+        <div className="flex gap-2">
+          <input
+            type="url"
+            placeholder="https://example.com/icon.png"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleUrlSave())}
+            className="flex-1 px-3 py-2.5 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+          />
+          <button
+            type="button"
+            onClick={handleUrlSave}
+            disabled={!urlInput.trim()}
+            className="px-4 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            Save
+          </button>
+        </div>
+      )}
+
+      {/* Preview or drop zone */}
+      {value ? (
+        <div className="flex items-center gap-3 p-3 rounded-xl border-2 border-green-500/30 bg-green-50 dark:bg-green-900/20">
+          <img
+            src={value}
+            alt="icon preview"
+            className="w-14 h-14 rounded-xl object-contain bg-white dark:bg-dark-800 p-1 border border-dark-200 dark:border-dark-700"
+          />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-green-700 dark:text-green-400">✓ Icon ready</p>
+            <p className="text-xs text-dark-400 mt-0.5">
+              {value.startsWith('data:') ? 'Base64 encoded (no external service)' : 'URL image'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+          >
+            <FiX />
+          </button>
+        </div>
+      ) : mode === 'upload' ? (
+        <>
+          <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+          <button
+            type="button"
+            onClick={() => inputRef.current.click()}
+            disabled={converting}
+            className="w-full flex flex-col items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed border-dark-300 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 bg-dark-50 dark:bg-dark-800 transition-colors cursor-pointer"
+          >
+            {converting ? (
+              <>
+                <div className="w-8 h-8 border-3 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-dark-500">Converting...</span>
+              </>
+            ) : (
+              <>
+                <FiImage className="text-3xl text-dark-400" />
+                <span className="text-sm font-medium text-dark-600 dark:text-dark-300">Click to select images</span>
+                <span className="text-xs text-dark-400">PNG, JPG, SVG, GIF, WebP — max 2MB</span>
+              </>
+            )}
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export default function PlatformsPage() {
+  const [platforms, setPlatforms] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [editingPlatform, setEditingPlatform] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: '',
+    icon: '',
+    color: '#6366f1',
+    description: '',
+    isActive: true,
+  });
+
+  useEffect(() => { fetchPlatforms(); }, []);
+
+  const fetchPlatforms = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'platforms'));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPlatforms(list.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const openAdd = () => {
+    setEditingPlatform(null);
+    setForm({ name: '', icon: '', color: '#6366f1', description: '', isActive: true });
+    setShowModal(true);
+  };
+
+  const openEdit = (p) => {
+    setEditingPlatform(p);
+    setForm({ name: p.name, icon: p.icon || '', color: p.color || '#6366f1', description: p.description || '', isActive: p.isActive });
+    setShowModal(true);
+  };
+
+  const closeModal = () => { setShowModal(false); setEditingPlatform(null); };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) { toast.error('Platform name is required'); return; }
+
+    setSaving(true);
+    try {
+      const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const data = { ...form, slug, updatedAt: Timestamp.now() };
+
+      if (editingPlatform) {
+        await updateDoc(doc(db, 'platforms', editingPlatform.id), data);
+        toast.success('Platform updated');
+      } else {
+        await addDoc(collection(db, 'platforms'), { ...data, sortOrder: platforms.length, createdAt: Timestamp.now() });
+        toast.success('Platform added');
+      }
+      closeModal();
+      fetchPlatforms();
+    } catch (err) {
+      toast.error(err.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id, name) => {
+    const snap = await getDocs(collection(db, 'categories'));
+    if (snap.docs.some(d => d.data().platformId === id)) {
+      toast.error('Delete all categories under this platform first');
+      return;
+    }
+    if (!confirm(`Delete "${name}"?`)) return;
+    await deleteDoc(doc(db, 'platforms', id));
+    toast.success('Platform deleted');
+    fetchPlatforms();
+  };
+
+  const toggleActive = async (p) => {
+    await updateDoc(doc(db, 'platforms', p.id), { isActive: !p.isActive, updatedAt: Timestamp.now() });
+    fetchPlatforms();
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h2 className="text-2xl font-bold text-dark-900 dark:text-white mb-1">Platform Management</h2>
+          <p className="text-dark-500 dark:text-dark-400 text-sm">Platforms created here appear on the home page and dashboard</p>
+        </div>
+        <button onClick={openAdd} className="btn-primary flex items-center gap-2">
+          <FiPlus /> Add Platform
+        </button>
+      </div>
+
+      {/* Grid */}
+      {platforms.length === 0 ? (
+        <div className="glass-card p-16 text-center">
+          <FiImage className="text-5xl text-dark-300 dark:text-dark-600 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-dark-900 dark:text-white mb-2">No Platforms Yet</h3>
+          <p className="text-dark-500 mb-6">Add a platform and it will show up on the home page</p>
+          <button onClick={openAdd} className="btn-primary"><FiPlus className="inline mr-2" />Add Platform</button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {platforms.map((p) => (
+            <div key={p.id} className="glass-card p-5 hover:shadow-xl transition-all" style={{ borderTop: `4px solid ${p.color}` }}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  {p.icon ? (
+                    <img src={p.icon} alt={p.name} className="w-12 h-12 rounded-xl object-contain bg-white dark:bg-dark-800 p-1 border border-dark-200 dark:border-dark-700" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-xl" style={{ backgroundColor: p.color }}>
+                      {p.name[0]}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="font-bold text-dark-900 dark:text-white">{p.name}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${p.isActive ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'}`}>
+                      {p.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {p.description && <p className="text-xs text-dark-500 mb-3">{p.description}</p>}
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => toggleActive(p)} className={`btn-sm ${p.isActive ? 'btn-secondary' : 'btn-primary'}`}>
+                  {p.isActive ? 'Deactivate' : 'Activate'}
+                </button>
+                <button onClick={() => openEdit(p)} className="btn-outline btn-sm flex items-center justify-center gap-1">
+                  <FiEdit2 /> Edit
+                </button>
+              </div>
+              <button onClick={() => handleDelete(p.id, p.name)} className="w-full mt-2 btn-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 border border-red-200 dark:border-red-800 rounded-lg py-1.5">
+                <FiTrash2 className="inline mr-1" /> Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-dark-200 dark:border-dark-700">
+              <h3 className="text-xl font-bold text-dark-900 dark:text-white">
+                {editingPlatform ? 'Edit Platform' : 'Add New Platform'}
+              </h3>
+              <button type="button" onClick={closeModal} className="w-8 h-8 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 flex items-center justify-center text-dark-500 text-xl">×</button>
+            </div>
+
+            <form onSubmit={handleSave} className="px-6 py-5 space-y-5">
+              {/* Name */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Platform Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., Instagram, TikTok"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white"
+                />
+              </div>
+
+              {/* Icon Upload */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Platform Icon</label>
+                <IconUpload value={form.icon} onChange={(url) => setForm({ ...form, icon: url })} />
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Status</label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, isActive: true })}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${form.isActive ? 'border-green-500 bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-green-400'}`}
+                  >
+                    ● Active
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, isActive: false })}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${!form.isActive ? 'border-red-500 bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-red-400'}`}
+                  >
+                    ○ Inactive
+                  </button>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Description</label>
+                <textarea
+                  rows="2"
+                  placeholder="e.g., Followers, Likes, Views, Comments"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white resize-none"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={closeModal} disabled={saving} className="flex-1 py-3 rounded-xl border-2 border-dark-200 dark:border-dark-700 text-dark-700 dark:text-dark-300 font-semibold hover:bg-dark-50 dark:hover:bg-dark-800 transition-all">
+                  Cancel
+                </button>
+                <button type="submit" disabled={saving} className="flex-1 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold transition-all disabled:opacity-60">
+                  {saving ? 'Saving...' : editingPlatform ? 'Update' : 'Add Platform'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

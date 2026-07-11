@@ -1,0 +1,49 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": "frontend/out",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "rewrites": [
+      {
+        "source": "/accounts/*",
+        "destination": "/accounts/_.html"
+      },
+      {
+        "source": "/admin/**",
+        "destination": "/admin.html"
+      },
+      {
+        "source": "/auth/**",
+        "destination": "/auth/login.html"
+      },
+      {
+        "source": "/dashboard/settings",
+        "destination": "/dashboard/settings.html"
+      },
+      {
+        "source": "/dashboard/orders",
+        "destination": "/dashboard/orders.html"
+      },
+      {
+        "source": "/dashboard/**",
+        "destination": "/dashboard.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
