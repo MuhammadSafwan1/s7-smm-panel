@@ -18,6 +18,7 @@ const ticketRoutes = require('./routes/ticket.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const providerRoutes = require('./routes/provider.routes');
 const proxyRoutes = require('./routes/proxy.routes');
+const proxyRoutes = require('./routes/proxy.routes');
 const { errorHandler, notFound } = require('./middleware/error.middleware');
 
 const app = express();
@@ -26,7 +27,11 @@ const PORT = process.env.PORT || 5000;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: [
+    process.env.CLIENT_URL || 'http://localhost:3000',
+    'https://msfsmm.web.app',
+    'https://msfsmm.firebaseapp.com',
+  ],
   credentials: true,
 }));
 
@@ -53,6 +58,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Routes
+app.use('/api/proxy', proxyRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/platforms', platformRoutes);
 app.use('/api/categories', categoryRoutes);

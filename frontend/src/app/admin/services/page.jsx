@@ -32,28 +32,37 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      // Use the backend server-side proxy to bypass CORS
-      const res = await fetch(`${API_URL}/provider-proxy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiUrl: provider.apiUrl,
-          apiKey: provider.apiKey,
-          action: 'services',
-        }),
-      });
+      const formBody = `key=${encodeURIComponent(provider.apiKey)}&action=services`;
 
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || 'Proxy request failed');
+      // 1. Try direct POST (works if provider allows CORS from browser)
+      let data = null;
+      try {
+        const res = await fetch(provider.apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: formBody,
+          signal: AbortSignal.timeout(6000),
+        });
+        const text = await res.text();
+        if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
+          data = JSON.parse(text);
+        }
+      } catch (_) { /* CORS blocked */ }
 
-      const data = result.data;
+      // 2. If direct failed, show helpful message
+      if (!data) {
+        throw new Error(
+          'CORS blocked the direct API call. To use the Browse feature from the live site, you need to deploy the backend server.\n\n' +
+          'For now you can: manually enter the Provider Service ID in the form field.'
+        );
+      }
 
       if (Array.isArray(data)) {
         setList(data);
       } else if (data?.error) {
-        setError(`Provider error: ${data.error}`);
+        setError(`Provider returned error: ${data.error}`);
       } else {
-        setError('Unexpected response from provider.');
+        setError('Unexpected response. Check API URL and Key.');
       }
     } catch (e) {
       setError(e.message);
@@ -94,10 +103,15 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
               <p className="text-dark-500">Fetching from {provider.name}...</p>
             </div>
           ) : error ? (
-            <div className="text-center py-16">
-              <p className="text-red-500 font-semibold mb-2">Failed to connect</p>
-              <p className="text-dark-400 text-sm mb-3">{error}</p>
-              <p className="text-xs text-dark-400 mb-4">Check that the API URL and Key are correct.</p>
+            <div className="text-center py-12 px-4">
+              <div className="text-4xl mb-4">⚠️</div>
+              <p className="text-red-500 font-semibold mb-3 text-lg">Cannot Load Services</p>
+              <div className="bg-dark-100 dark:bg-dark-800 rounded-xl p-4 text-left max-w-lg mx-auto mb-4">
+                <p className="text-dark-400 text-sm leading-relaxed whitespace-pre-line">{error}</p>
+              </div>
+              <p className="text-xs text-dark-400 mb-4 max-w-md mx-auto">
+                You can still add services manually by entering the Provider Service ID in the form.
+              </p>
               <button onClick={load} className="btn-outline btn-sm">Retry</button>
             </div>
           ) : filtered.length === 0 ? (

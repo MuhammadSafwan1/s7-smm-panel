@@ -1,47 +1,31 @@
 # Dependencies
 node_modules/
-.pnp
-.pnp.js
+**/node_modules/
 
-# Environment
+# Environment files
 .env
 .env.local
 .env.*.local
+**/.env
+**/.env.local
 
-# Firebase
+# Firebase secrets
 serviceAccountKey.json
-frontend/ff-uid-store-backend-firebase-adminsdk-fbsvc-447d2fcdef.json
+**/serviceAccountKey.json
+ff-uid-store-backend-firebase-adminsdk-*.json
+**/*firebase-adminsdk*.json
 
-# Build
-frontend/out/
+# Next.js build output
 frontend/.next/
-frontend/build/
+frontend/out/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Firebase cache
+.firebase/
 
 # OS
 .DS_Store
 Thumbs.db
 
 # Logs
-logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Cache
-.cache/
-.eslintcache
-*.tsbuildinfo
-next-env.d.ts
-
-# Testing
-coverage/
-
-# Misc
-*.pem
+logs/
