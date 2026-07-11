@@ -18,7 +18,6 @@ const ticketRoutes = require('./routes/ticket.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const providerRoutes = require('./routes/provider.routes');
 const proxyRoutes = require('./routes/proxy.routes');
-const proxyRoutes = require('./routes/proxy.routes');
 const { errorHandler, notFound } = require('./middleware/error.middleware');
 
 const app = express();
@@ -70,7 +69,6 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/smm', smmRoutes);
-app.use('/api', proxyRoutes);
 
 // Error handling
 app.use(notFound);
