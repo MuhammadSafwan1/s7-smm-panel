@@ -19,8 +19,7 @@ const labelCls = "block text-sm font-semibold text-dark-700 dark:text-dark-300 m
 const EMPTY_FORM = {
   serviceId: '', name: '', platformId: '', categoryId: '',
   providerId: '', providerServiceId: '',
-  price: '', providerPrice: '', profitMargin: 40, // Default 40% profit margin
-  minQuantity: 100, maxQuantity: 100000,
+  price: '', minQuantity: 100, maxQuantity: 100000,
   avgTime: '1-6 Hours', description: '',
   customCommentsRequired: false,
   isActive: true, isFeatured: false, isPopular: false,
@@ -291,7 +290,12 @@ export default function ServicesPage() {
         getDocs(collection(db, 'categories')),
         getDocs(collection(db, 'providers')),
       ]);
-      setServices(sS.docs.map(d => ({ id: d.id, ...d.data() })));
+      setServices(sS.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => {
+        // Sort by serviceId (ascending: 1, 2, 3...)
+        const idA = parseInt(a.serviceId) || 0;
+        const idB = parseInt(b.serviceId) || 0;
+        return idA - idB;
+      }));
       const pList = pS.docs.map(d => ({ id: d.id, ...d.data() }));
       setPlatforms(pList);
       setCategories(cS.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -330,8 +334,6 @@ export default function ServicesPage() {
       providerId: svc.providerId||'',
       providerServiceId: svc.providerServiceId||'',
       price: svc.price,
-      providerPrice: svc.providerPrice || '',
-      profitMargin: svc.profitMargin || 40,
       minQuantity: svc.minQuantity,
       maxQuantity: svc.maxQuantity,
       avgTime: svc.avgTime||'1-6 Hours',
@@ -549,72 +551,18 @@ export default function ServicesPage() {
               {/* Price / Time / Min / Max */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>Provider Price (PKR)</label>
-                  <input 
-                    type="number" 
-                    step="0.0001"
-                    placeholder="100.50" 
-                    value={form.providerPrice || ''} 
-                    onChange={e => {
-                      const providerPrice = parseFloat(e.target.value) || 0;
-                      const profitMargin = parseFloat(form.profitMargin) || 0;
-                      const finalPrice = providerPrice + (providerPrice * profitMargin / 100);
-                      setForm({ 
-                        ...form, 
-                        providerPrice: e.target.value,
-                        price: finalPrice.toFixed(4)
-                      });
-                    }} 
-                    className={inputCls} 
-                  />
-                  <p className="text-xs text-dark-400 mt-1">
-                    Base price from provider (optional)
-                  </p>
-                </div>
-                <div>
-                  <label className={labelCls}>Profit Margin (%)</label>
-                  <input 
-                    type="number" 
-                    step="1"
-                    min="0"
-                    max="1000"
-                    placeholder="40" 
-                    value={form.profitMargin || ''} 
-                    onChange={e => {
-                      const profitMargin = parseFloat(e.target.value) || 0;
-                      const providerPrice = parseFloat(form.providerPrice) || 0;
-                      const finalPrice = providerPrice + (providerPrice * profitMargin / 100);
-                      setForm({ 
-                        ...form, 
-                        profitMargin: e.target.value,
-                        price: providerPrice ? finalPrice.toFixed(4) : form.price
-                      });
-                    }} 
-                    className={inputCls} 
-                  />
-                  <p className="text-xs text-dark-400 mt-1">
-                    Markup percentage (e.g., 40% = 1.4x price)
-                  </p>
-                </div>
-                <div>
-                  <label className={labelCls}>Final Price per 1000 (PKR) *</label>
+                  <label className={labelCls}>Price per 1000 (PKR) *</label>
                   <input 
                     type="number" 
                     step="0.0001" 
                     required 
-                    placeholder="140.70" 
+                    placeholder="100.50" 
                     value={form.price || ''} 
                     onChange={e => setForm({ ...form, price: e.target.value })} 
-                    className={inputCls + ' font-bold text-primary-600 dark:text-primary-400'} 
+                    className={inputCls} 
                   />
                   <p className="text-xs text-dark-400 mt-1">
-                    {form.providerPrice && form.profitMargin ? (
-                      <span className="text-green-500">
-                        ₨{parseFloat(form.providerPrice).toFixed(2)} + {form.profitMargin}% = ₨{parseFloat(form.price || 0).toFixed(2)}
-                      </span>
-                    ) : (
-                      'Price shown to users (converted to their currency)'
-                    )}
+                    Price in PKR. Will be converted to user's selected currency.
                   </p>
                 </div>
                 <div>

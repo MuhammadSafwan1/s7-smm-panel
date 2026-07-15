@@ -44,7 +44,13 @@ function ServicesContent() {
         .filter(c => c.isActive !== false)
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
       const sList = sS.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(s => s.isActive !== false);
+        .filter(s => s.isActive !== false)
+        .sort((a, b) => {
+          // Sort by serviceId (ascending: 1, 2, 3...)
+          const idA = parseInt(a.serviceId) || 0;
+          const idB = parseInt(b.serviceId) || 0;
+          return idA - idB;
+        });
 
       setPlatforms(pList);
       setCategories(cList);
