@@ -1,4 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCxvV0yCJIaY2T7lEIiHG4PXljvXdHqZMg",
@@ -10,6 +11,14 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-GNEFXPFDDB"
 };
 
+// Debug: Log config in development
+if (process.env.NODE_ENV === 'development') {
+  console.log('Firebase Config Loaded:', {
+    projectId: firebaseConfig.projectId,
+    authDomain: firebaseConfig.authDomain,
+  });
+}
+
 // Initialize Firebase
 let app;
 if (!getApps().length) {
@@ -18,4 +27,5 @@ if (!getApps().length) {
   app = getApps()[0];
 }
 
+export const auth = getAuth(app);
 export default app;

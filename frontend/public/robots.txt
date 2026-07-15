@@ -1,0 +1,16 @@
+# MSF SMM Panel - Robots.txt
+User-agent: *
+Allow: /
+Allow: /dashboard
+Allow: /auth/login
+Allow: /auth/register
+Allow: /policies
+Allow: /help
+
+# Block admin pages from search engines
+Disallow: /s7bHG74TY09161NJASKLPW/
+Disallow: /dashboard/api
+Disallow: /dashboard/settings
+
+# Sitemap location
+Sitemap: https://msfsmm.web.app/sitemap.xml

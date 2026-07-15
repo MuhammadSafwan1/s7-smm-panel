@@ -50,6 +50,13 @@ const createOrder = async (req, res) => {
       quantity: parseInt(quantity),
       charge,
       status: 'pending',
+      refillSupported: service.refillSupported || false,
+      refillPeriodDays: parseInt(service.refillPeriodDays || service.refillDays || 0),
+      refundPercent: parseFloat(service.refundPercent) || 85,
+      refillUsed: false,
+      refillUsedAt: null,
+      refillRequested: false,
+      refillRequestedAt: null,
     });
     
     const orderRef = await db.collection('orders').add(orderData.toFirestore());
@@ -269,22 +276,31 @@ const requestRefill = async (req, res) => {
     }
     
     // Check if order can be refilled
-    if (!order.canRefill()) {
-      return errorResponse(res, 'Order cannot be refilled', 400);
+    if (order.refillUsed) {
+      return errorResponse(res, 'Refill has already been used for this order', 400);
     }
-    
+
+    if (!order.canRefill()) {
+      return errorResponse(res, 'Order cannot be refilled or the refill period has expired', 400);
+    }
+
     // Get service to check refill support
     const serviceDoc = await db.collection('services').doc(order.serviceId).get();
     if (!serviceDoc.exists || !serviceDoc.data().refillSupported) {
       return errorResponse(res, 'Refill not supported for this service', 400);
     }
-    
+
     // Send refill request to provider
     try {
-      await smmProviderService.createRefill(order.provider, order.providerOrderId);
+      const refillResult = await smmProviderService.createRefill(order.provider, order.providerOrderId);
       
       await db.collection('orders').doc(id).update({
         status: 'refilling',
+        refillUsed: true,
+        refillUsedAt: Timestamp.now(),
+        refillId: refillResult?.data?.refill || null,
+        refillRequested: true,
+        refillRequestedAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
       
@@ -339,42 +355,57 @@ const cancelOrder = async (req, res) => {
       return errorResponse(res, 'Cancellation not supported for this service', 400);
     }
     
+    const serviceData = serviceDoc.data();
+    const refundSupported = serviceData.refundSupported || false;
+    const refundPercent = Math.min(Math.max(parseFloat(serviceData.refundPercent ?? order.refundPercent ?? 85) || 85, 0), 100);
+    const refundAmount = refundSupported ? parseFloat(((order.charge * refundPercent) / 100).toFixed(2)) : 0;
+    
     // Send cancel request to provider
     try {
       await smmProviderService.cancelOrder(order.provider, order.providerOrderId);
       
-      // Refund user
-      const userDoc = await db.collection('users').doc(userId).get();
-      const currentBalance = userDoc.data()?.balance || 0;
-      
-      await db.collection('users').doc(userId).update({
-        balance: FieldValue.increment(order.charge),
-      });
-      
-      // Create refund transaction
-      await db.collection('transactions').add({
-        userId,
-        type: 'credit',
-        amount: order.charge,
-        balanceBefore: currentBalance,
-        balanceAfter: currentBalance + order.charge,
-        method: 'refund',
-        reference: id,
-        status: 'completed',
-        description: `Refund for cancelled order #${id.substring(0, 8)}`,
-        createdAt: Timestamp.now(),
-      });
-      
-      await db.collection('orders').doc(id).update({
+      // Refund user if applicable
+      let updatedOrder = {
         status: 'cancelled',
+        refundIssued: refundAmount > 0,
+        refundAmount,
+        refundPercent,
+        cancelledAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-      });
+      };
+      
+      if (refundAmount > 0) {
+        const userDoc = await db.collection('users').doc(userId).get();
+        const currentBalance = userDoc.data()?.balance || 0;
+        
+        await db.collection('users').doc(userId).update({
+          balance: FieldValue.increment(refundAmount),
+        });
+        
+        // Create refund transaction
+        await db.collection('transactions').add({
+          userId,
+          type: 'credit',
+          amount: refundAmount,
+          balanceBefore: currentBalance,
+          balanceAfter: currentBalance + refundAmount,
+          method: 'refund',
+          reference: id,
+          status: 'completed',
+          description: `Refund for cancelled order #${id.substring(0, 8)}`,
+          createdAt: Timestamp.now(),
+        });
+      }
+      
+      await db.collection('orders').doc(id).update(updatedOrder);
       
       // Create notification
       await db.collection('notifications').add({
         userId,
         title: 'Order Cancelled',
-        message: `Order #${id.substring(0, 8)} cancelled and refunded`,
+        message: refundAmount > 0
+          ? `Order #${id.substring(0, 8)} cancelled and refunded ${refundPercent}% of the charge.`
+          : `Order #${id.substring(0, 8)} has been cancelled. No refund was configured for this service.`,
         type: 'order',
         isRead: false,
         link: `/dashboard/orders/${id}`,

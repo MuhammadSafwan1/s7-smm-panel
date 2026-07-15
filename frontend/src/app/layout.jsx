@@ -1,66 +1,75 @@
+'use client';
 import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
+import { CurrencyProvider } from '@/context/CurrencyContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import Navbar from '@/components/common/Navbar';
 import Footer from '@/components/common/Footer';
-import { Toaster } from 'react-hot-toast';
+import { SeasonalBackground } from '@/components/common/SeasonalBackground';
+import ThemeToaster from '@/components/common/ThemeToaster';
+import SupportButton from '@/components/common/SupportButton';
+import AnnouncementPopup from '@/components/common/AnnouncementPopup';
+import SourceProtection from '@/components/common/SourceProtection';
 import { Suspense } from 'react';
+import { usePathname } from 'next/navigation';
+import VerifyGate from '@/components/common/VerifyGate';
 import './globals.css';
 
-export const metadata = {
-  title: 'MSF SMM Panel - Premium Social Media Marketing Services',
-  description: 'Professional SMM Panel offering Instagram, Facebook, YouTube, TikTok, Twitter followers, likes, views and more. Affordable prices, instant delivery, 24/7 support.',
-  keywords: 'smm panel, social media marketing, instagram followers, youtube views, tiktok likes, facebook followers, twitter engagement, smm services',
-};
-
-export const viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 5,
-};
+function LayoutContent({ children }) {
+  const pathname = usePathname();
+  const isAdminPage = pathname?.startsWith('/s7bHG74TY09161NJASKLPW');
+  
+  return (
+    <>
+      <SourceProtection />
+      <SeasonalBackground />
+      {!isAdminPage && (
+        <Suspense fallback={<nav className="h-16 md:h-16 bg-transparent" />}>
+          <Navbar />
+        </Suspense>
+      )}
+      <main className={isAdminPage ? 'flex-1' : 'flex-1 pt-16'}>
+        <VerifyGate required={true}>
+          {children}
+        </VerifyGate>
+      </main>
+      {!isAdminPage && <Footer />}
+      {!isAdminPage && <SupportButton />}
+      {!isAdminPage && <AnnouncementPopup />}
+      <ThemeToaster />
+    </>
+  );
+}
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.ico" />
+        {/* Google Search Console Verification */}
+        <meta name="google-site-verification" content="nntcX1cmLS1n1nr0WDcOKmWwusVeITxgkNHkQnFZ2_o" />
+        {/* Disable DevTools */}
+        <script src="/disable-devtools.js" />
+        <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            var t = localStorage.getItem('theme');
+            var d = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (t === 'dark' || (!t && d)) {
+              document.documentElement.classList.add('dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+            }
+          } catch(e) {}
+        ` }} />
       </head>
       <body className="min-h-screen flex flex-col" suppressHydrationWarning>
         <AuthProvider>
           <CartProvider>
-            <Suspense fallback={<nav className="h-16 md:h-16 bg-transparent" />}>
-              <Navbar />
-            </Suspense>
-            <main className="flex-1 pt-16">
-              {children}
-            </main>
-            <Footer />
-            <Toaster
-              position="top-right"
-              toastOptions={{
-                duration: 3000,
-                style: {
-                  background: 'var(--glass-bg)',
-                  backdropFilter: 'blur(16px)',
-                  border: '1px solid var(--glass-border)',
-                  borderRadius: '16px',
-                  padding: '12px 20px',
-                  fontSize: '14px',
-                  color: '#ffffff',
-                },
-                success: {
-                  iconTheme: {
-                    primary: '#22c55e',
-                    secondary: '#fff',
-                  },
-                },
-                error: {
-                  iconTheme: {
-                    primary: '#ef4444',
-                    secondary: '#fff',
-                  },
-                },
-              }}
-            />
+            <CurrencyProvider>
+              <ThemeProvider>
+                <LayoutContent>{children}</LayoutContent>
+              </ThemeProvider>
+            </CurrencyProvider>
           </CartProvider>
         </AuthProvider>
       </body>

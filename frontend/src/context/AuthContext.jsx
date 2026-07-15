@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChange } from '@/firebase/auth';
 import { getUserProfile, initializeUserProfile } from '@/firebase/firestore';
 import { USER_ROLES } from '@/utils/constants';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/firebase/firestore';
 
 const AuthContext = createContext(null);
 
@@ -12,6 +14,30 @@ export function AuthProvider({ children }) {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // Update lastSeen every 2 minutes
+  useEffect(() => {
+    if (!user) return;
+
+    const updateLastSeen = async () => {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          lastSeen: serverTimestamp(),
+          isOnline: true
+        });
+      } catch (error) {
+        console.error('Failed to update lastSeen:', error);
+      }
+    };
+
+    // Initial update
+    updateLastSeen();
+
+    // Update every 2 minutes
+    const interval = setInterval(updateLastSeen, 2 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (firebaseUser) => {

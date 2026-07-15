@@ -1,374 +1,282 @@
-const smmProvider = require('../services/smmProvider.service');
 const { db } = require('../config/firebaseAdmin');
+const { Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const smmProviderService = require('../services/smmProvider.service');
 
 /**
- * Get all services from all providers
+ * Sync services from ALL providers and detect changes
+ * This endpoint should be called periodically (e.g., every 6-12 hours)
  */
-exports.getAllServices = async (req, res) => {
+const syncProvidersServices = async (req, res) => {
   try {
-    const result = await smmProvider.getAllServices();
-    
-    if (result.success) {
-      return successResponse(res, result.data, 'Services fetched successfully');
-    }
-    
-    return errorResponse(res, 'Failed to fetch services', 500);
-  } catch (error) {
-    console.error('Get all services error:', error);
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * Get services from specific provider
- */
-exports.getProviderServices = async (req, res) => {
-  try {
-    const { provider } = req.params;
-    
-    if (!['smmdecent', 'smmcloud'].includes(provider)) {
-      return errorResponse(res, 'Invalid provider', 400);
-    }
-
-    const result = await smmProvider.getServices(provider);
-    
-    if (result.success) {
-      return successResponse(res, result.data, 'Services fetched successfully');
-    }
-    
-    return errorResponse(res, result.error || 'Failed to fetch services', 500);
-  } catch (error) {
-    console.error('Get provider services error:', error);
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * Create new order
- */
-exports.createOrder = async (req, res) => {
-  try {
-    const { provider, service, link, quantity, runs, interval } = req.body;
-    const userId = req.user.uid;
-
-    // Validate input
-    if (!provider || !service || !link || !quantity) {
-      return errorResponse(res, 'Missing required fields', 400);
-    }
-
-    if (!['smmdecent', 'smmcloud'].includes(provider)) {
-      return errorResponse(res, 'Invalid provider', 400);
-    }
-
-    // Get user data
-    const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return errorResponse(res, 'User not found', 404);
-    }
-
-    const userData = userDoc.data();
-
-    // Get service details to check price
-    const servicesResult = await smmProvider.getServices(provider);
-    if (!servicesResult.success) {
-      return errorResponse(res, 'Failed to fetch service details', 500);
-    }
-
-    const serviceDetails = servicesResult.data.find((s) => s.service == service);
-    if (!serviceDetails) {
-      return errorResponse(res, 'Service not found', 404);
-    }
-
-    // Calculate cost
-    const cost = (parseFloat(serviceDetails.rate) * parseInt(quantity)) / 1000;
-
-    // Check user balance
-    if ((userData.balance || 0) < cost) {
-      return errorResponse(res, 'Insufficient balance', 400);
-    }
-
-    // Place order with provider
-    const orderResult = await smmProvider.addOrder(provider, {
-      service,
-      link,
-      quantity,
-      runs,
-      interval,
-    });
-
-    if (!orderResult.success) {
-      return errorResponse(res, orderResult.error || 'Failed to create order', 500);
-    }
-
-    // Deduct from user balance
-    await db.collection('users').doc(userId).update({
-      balance: (userData.balance || 0) - cost,
-    });
-
-    // Save order to Firestore
-    const orderData = {
-      userId,
-      provider,
-      providerOrderId: orderResult.data.order,
-      service: serviceDetails.service,
-      serviceName: serviceDetails.name,
-      serviceCategory: serviceDetails.category,
-      link,
-      quantity: parseInt(quantity),
-      charge: cost,
-      status: 'Pending',
-      runs: runs ? parseInt(runs) : null,
-      interval: interval ? parseInt(interval) : null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    const syncResults = {
+      totalProviders: 0,
+      syncedProviders: 0,
+      failedProviders: [],
+      totalServices: 0,
+      newServices: 0,
+      updatedServices: 0,
+      deletedServices: 0,
+      priceChanges: [],
     };
 
-    const orderRef = await db.collection('orders').add(orderData);
+    // Get all active providers
+    const providersSnapshot = await db.collection('providers')
+      .where('isActive', '==', true)
+      .get();
 
-    return successResponse(
-      res,
-      {
-        orderId: orderRef.id,
-        providerOrderId: orderResult.data.order,
-        charge: cost,
-      },
-      'Order created successfully'
-    );
-  } catch (error) {
-    console.error('Create order error:', error);
-    return errorResponse(res, error.message, 500);
-  }
-};
+    syncResults.totalProviders = providersSnapshot.size;
 
-/**
- * Get order status
- */
-exports.getOrderStatus = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const userId = req.user.uid;
+    for (const providerDoc of providersSnapshot.docs) {
+      const providerId = providerDoc.id;
+      const providerData = providerDoc.data();
 
-    // Get order from Firestore
-    const orderDoc = await db.collection('orders').doc(orderId).get();
-    if (!orderDoc.exists) {
-      return errorResponse(res, 'Order not found', 404);
-    }
+      try {
+        console.log(`[SYNC] Starting sync for provider: ${providerData.name}`);
 
-    const orderData = orderDoc.data();
+        // Fetch services from provider API
+        const providerServices = await smmProviderService.getServices(providerId);
 
-    // Check if user owns this order (skip check for admin)
-    if (orderData.userId !== userId && !req.user.admin) {
-      return errorResponse(res, 'Unauthorized', 403);
-    }
+        if (!providerServices || !Array.isArray(providerServices)) {
+          throw new Error('Invalid response from provider API');
+        }
 
-    // Get status from provider
-    const statusResult = await smmProvider.getOrderStatus(
-      orderData.provider,
-      orderData.providerOrderId
-    );
+        console.log(`[SYNC] Fetched ${providerServices.length} services from ${providerData.name}`);
 
-    if (statusResult.success) {
-      // Update order status in Firestore
-      await db.collection('orders').doc(orderId).update({
-        status: statusResult.data.status,
-        remains: statusResult.data.remains,
-        startCount: statusResult.data.start_count,
-        updatedAt: new Date(),
-      });
+        // Get existing services for this provider from Firestore
+        const existingServicesSnapshot = await db.collection('services')
+          .where('provider', '==', providerId)
+          .get();
 
-      return successResponse(
-        res,
-        {
-          ...orderData,
-          ...statusResult.data,
-        },
-        'Order status fetched successfully'
-      );
-    }
+        const existingServices = {};
+        existingServicesSnapshot.docs.forEach(doc => {
+          const data = doc.data();
+          existingServices[data.providerServiceId] = {
+            id: doc.id,
+            ...data,
+          };
+        });
 
-    return errorResponse(res, statusResult.error || 'Failed to fetch order status', 500);
-  } catch (error) {
-    console.error('Get order status error:', error);
-    return errorResponse(res, error.message, 500);
-  }
-};
+        // Track provider service IDs that still exist
+        const activeProviderServiceIds = new Set();
 
-/**
- * Get user orders
- */
-exports.getUserOrders = async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const { limit = 50, status } = req.query;
+        // Process each service from provider
+        for (const providerService of providerServices) {
+          const providerServiceId = String(providerService.service);
+          activeProviderServiceIds.add(providerServiceId);
 
-    let query = db.collection('orders').where('userId', '==', userId);
+          const providerPrice = parseFloat(providerService.rate);
+          const existingService = existingServices[providerServiceId];
 
-    if (status) {
-      query = query.where('status', '==', status);
-    }
+          if (existingService) {
+            // Service exists - check for updates
+            const updates = {};
+            let hasChanges = false;
 
-    query = query.orderBy('createdAt', 'desc').limit(parseInt(limit));
+            // Check price change
+            if (Math.abs(existingService.providerPrice - providerPrice) > 0.001) {
+              updates.providerPrice = providerPrice;
+              updates.oldProviderPrice = existingService.providerPrice;
+              updates.priceChanged = true;
+              updates.priceChangedAt = Timestamp.now();
+              
+              // Recalculate selling price (keep same profit)
+              updates.price = providerPrice + (existingService.profit || 0);
+              
+              hasChanges = true;
 
-    const snapshot = await query.get();
-    const orders = [];
+              // Track price change
+              syncResults.priceChanges.push({
+                serviceId: existingService.id,
+                serviceName: existingService.name,
+                provider: providerData.name,
+                oldPrice: existingService.providerPrice,
+                newPrice: providerPrice,
+                change: providerPrice - existingService.providerPrice,
+                changePercent: ((providerPrice - existingService.providerPrice) / existingService.providerPrice * 100).toFixed(2),
+              });
+            }
 
-    snapshot.forEach((doc) => {
-      orders.push({ id: doc.id, ...doc.data() });
-    });
+            // Update service name if changed
+            if (providerService.name && providerService.name !== existingService.name) {
+              updates.name = providerService.name;
+              hasChanges = true;
+            }
 
-    return successResponse(res, orders, 'Orders fetched successfully');
-  } catch (error) {
-    console.error('Get user orders error:', error);
-    return errorResponse(res, error.message, 500);
-  }
-};
+            // Update min/max if changed
+            if (providerService.min && parseInt(providerService.min) !== existingService.minQuantity) {
+              updates.minQuantity = parseInt(providerService.min);
+              hasChanges = true;
+            }
+            if (providerService.max && parseInt(providerService.max) !== existingService.maxQuantity) {
+              updates.maxQuantity = parseInt(providerService.max);
+              hasChanges = true;
+            }
 
-/**
- * Get all orders (Admin only)
- */
-exports.getAllOrders = async (req, res) => {
-  try {
-    const { limit = 100, status } = req.query;
+            if (hasChanges) {
+              updates.updatedAt = Timestamp.now();
+              updates.lastSyncedAt = Timestamp.now();
+              
+              await db.collection('services').doc(existingService.id).update(updates);
+              syncResults.updatedServices++;
+              console.log(`[SYNC] Updated service: ${existingService.name}`);
+            } else {
+              // No changes, just update lastSyncedAt
+              await db.collection('services').doc(existingService.id).update({
+                lastSyncedAt: Timestamp.now(),
+              });
+            }
+          } else {
+            // New service - could be auto-added (but disabled by default)
+            // For now, just log it - admin can manually add if needed
+            console.log(`[SYNC] New service detected (not auto-added): ${providerService.name} (ID: ${providerServiceId})`);
+            syncResults.newServices++;
+          }
+        }
 
-    let query = db.collection('orders');
+        // Find deleted services (exist in Firestore but not in provider API)
+        for (const [providerServiceId, existingService] of Object.entries(existingServices)) {
+          if (!activeProviderServiceIds.has(providerServiceId)) {
+            // Service no longer exists in provider
+            console.log(`[SYNC] Service deleted from provider: ${existingService.name}`);
+            
+            // Mark as inactive and deleted
+            await db.collection('services').doc(existingService.id).update({
+              isActive: false,
+              deletedFromProvider: true,
+              deletedAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            });
+            
+            syncResults.deletedServices++;
+          }
+        }
 
-    if (status) {
-      query = query.where('status', '==', status);
-    }
+        syncResults.totalServices += providerServices.length;
+        syncResults.syncedProviders++;
 
-    query = query.orderBy('createdAt', 'desc').limit(parseInt(limit));
+        // Update provider last synced time
+        await db.collection('providers').doc(providerId).update({
+          lastSyncedAt: Timestamp.now(),
+        });
 
-    const snapshot = await query.get();
-    const orders = [];
-
-    snapshot.forEach((doc) => {
-      orders.push({ id: doc.id, ...doc.data() });
-    });
-
-    return successResponse(res, orders, 'Orders fetched successfully');
-  } catch (error) {
-    console.error('Get all orders error:', error);
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * Get provider balances
- */
-exports.getProviderBalances = async (req, res) => {
-  try {
-    const result = await smmProvider.getAllBalances();
-    
-    if (result.success) {
-      return successResponse(res, result.data, 'Balances fetched successfully');
-    }
-    
-    return errorResponse(res, 'Failed to fetch balances', 500);
-  } catch (error) {
-    console.error('Get provider balances error:', error);
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * Create refill
- */
-exports.createRefill = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const userId = req.user.uid;
-
-    // Get order from Firestore
-    const orderDoc = await db.collection('orders').doc(orderId).get();
-    if (!orderDoc.exists) {
-      return errorResponse(res, 'Order not found', 404);
-    }
-
-    const orderData = orderDoc.data();
-
-    // Check if user owns this order (skip check for admin)
-    if (orderData.userId !== userId && !req.user.admin) {
-      return errorResponse(res, 'Unauthorized', 403);
-    }
-
-    // Create refill with provider
-    const refillResult = await smmProvider.createRefill(
-      orderData.provider,
-      orderData.providerOrderId
-    );
-
-    if (refillResult.success) {
-      // Save refill info
-      await db.collection('orders').doc(orderId).update({
-        refillId: refillResult.data.refill,
-        refillRequested: true,
-        refillRequestedAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      return successResponse(res, refillResult.data, 'Refill created successfully');
-    }
-
-    return errorResponse(res, refillResult.error || 'Failed to create refill', 500);
-  } catch (error) {
-    console.error('Create refill error:', error);
-    return errorResponse(res, error.message, 500);
-  }
-};
-
-/**
- * Cancel order
- */
-exports.cancelOrder = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const userId = req.user.uid;
-
-    // Get order from Firestore
-    const orderDoc = await db.collection('orders').doc(orderId).get();
-    if (!orderDoc.exists) {
-      return errorResponse(res, 'Order not found', 404);
-    }
-
-    const orderData = orderDoc.data();
-
-    // Check if user owns this order (skip check for admin)
-    if (orderData.userId !== userId && !req.user.admin) {
-      return errorResponse(res, 'Unauthorized', 403);
-    }
-
-    // Cancel order with provider
-    const cancelResult = await smmProvider.cancelOrders(
-      orderData.provider,
-      orderData.providerOrderId
-    );
-
-    if (cancelResult.success) {
-      // Update order status
-      await db.collection('orders').doc(orderId).update({
-        status: 'Canceled',
-        canceledAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      // Refund user if applicable
-      const refundAmount = orderData.charge || 0;
-      if (refundAmount > 0) {
-        const userDoc = await db.collection('users').doc(userId).get();
-        const currentBalance = userDoc.data().balance || 0;
-        
-        await db.collection('users').doc(userId).update({
-          balance: currentBalance + refundAmount,
+      } catch (error) {
+        console.error(`[SYNC] Error syncing provider ${providerData.name}:`, error);
+        syncResults.failedProviders.push({
+          id: providerId,
+          name: providerData.name,
+          error: error.message,
         });
       }
-
-      return successResponse(res, cancelResult.data, 'Order canceled successfully');
     }
 
-    return errorResponse(res, cancelResult.error || 'Failed to cancel order', 500);
+    // Store sync log
+    await db.collection('syncLogs').add({
+      ...syncResults,
+      syncedAt: Timestamp.now(),
+      status: syncResults.failedProviders.length === 0 ? 'success' : 'partial',
+    });
+
+    console.log('[SYNC] Sync completed:', syncResults);
+
+    return successResponse(res, syncResults, 'Provider services sync completed');
   } catch (error) {
-    console.error('Cancel order error:', error);
+    console.error('[SYNC] Sync error:', error);
     return errorResponse(res, error.message, 500);
   }
+};
+
+/**
+ * Get price change alerts for admin
+ */
+const getPriceChangeAlerts = async (req, res) => {
+  try {
+    const { limit: limitParam } = req.query;
+    const limitValue = parseInt(limitParam) || 50;
+
+    // Get services with recent price changes
+    const servicesSnapshot = await db.collection('services')
+      .where('priceChanged', '==', true)
+      .orderBy('priceChangedAt', 'desc')
+      .limit(limitValue)
+      .get();
+
+    const alerts = [];
+
+    for (const doc of servicesSnapshot.docs) {
+      const service = { id: doc.id, ...doc.data() };
+      
+      // Get provider name
+      const providerDoc = await db.collection('providers').doc(service.provider).get();
+      const providerName = providerDoc.exists ? providerDoc.data().name : 'Unknown';
+
+      alerts.push({
+        serviceId: service.id,
+        serviceName: service.name,
+        provider: providerName,
+        oldPrice: service.oldProviderPrice,
+        newPrice: service.providerPrice,
+        change: service.providerPrice - service.oldProviderPrice,
+        changePercent: ((service.providerPrice - service.oldProviderPrice) / service.oldProviderPrice * 100).toFixed(2),
+        changedAt: service.priceChangedAt,
+      });
+    }
+
+    return successResponse(res, alerts, 'Price change alerts retrieved successfully');
+  } catch (error) {
+    console.error('Get price alerts error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Mark price change as acknowledged
+ */
+const acknowledgePriceChange = async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+
+    await db.collection('services').doc(serviceId).update({
+      priceChanged: false,
+      priceAcknowledgedAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+
+    return successResponse(res, null, 'Price change acknowledged');
+  } catch (error) {
+    console.error('Acknowledge price change error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Get sync history logs
+ */
+const getSyncLogs = async (req, res) => {
+  try {
+    const { limit: limitParam } = req.query;
+    const limitValue = parseInt(limitParam) || 20;
+
+    const logsSnapshot = await db.collection('syncLogs')
+      .orderBy('syncedAt', 'desc')
+      .limit(limitValue)
+      .get();
+
+    const logs = logsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return successResponse(res, logs, 'Sync logs retrieved successfully');
+  } catch (error) {
+    console.error('Get sync logs error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+module.exports = {
+  syncProvidersServices,
+  getPriceChangeAlerts,
+  acknowledgePriceChange,
+  getSyncLogs,
 };

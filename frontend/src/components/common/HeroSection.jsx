@@ -29,15 +29,11 @@ export default function HeroSection() {
   };
 
   return (
-    <section className="relative min-h-[90vh] flex items-center overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 grid-bg opacity-50" />
-      <div className="absolute inset-0 gradient-bg-subtle" />
+    <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-dark-950">
+      {/* Remove colorful gradients - keep it dark and clean */}
       
-      {/* Gradient Orbs */}
-      <div className="absolute top-20 left-10 w-96 h-96 bg-primary-500/20 rounded-full blur-[128px]" />
-      <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary-500/20 rounded-full blur-[128px]" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-500/10 rounded-full blur-[128px]" />
+      {/* Subtle dark gradient */}
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-dark-950 to-dark-950" />
 
       <div className="relative container-custom w-full">
         <motion.div
@@ -115,7 +111,7 @@ export default function HeroSection() {
       </div>
 
       {/* Bottom fade */}
-      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-white dark:from-dark-950 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-dark-950 to-transparent" />
     </section>
   );
 }

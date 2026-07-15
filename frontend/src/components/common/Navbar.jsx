@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
-import { FiMenu, FiX, FiShoppingCart, FiUser, FiLogOut, FiSun, FiMoon, FiPackage, FiSettings } from 'react-icons/fi';
+import { FiMenu, FiX, FiShoppingCart, FiUser, FiLogOut, FiSun, FiMoon, FiPackage, FiSettings, FiCode } from 'react-icons/fi';
 import { logout } from '@/firebase/auth';
 import { getCategories } from '@/firebase/firestore';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
+import CurrencySwitcher from './CurrencySwitcher';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -87,44 +88,93 @@ export default function Navbar() {
           </Link>
 
           {/* Center Navigation */}
-          <div className="hidden md:flex items-center gap-4 lg:gap-8 flex-1 justify-center px-4 overflow-x-auto">
-            <Link
-              href="/"
-              className={`relative font-bold transition-all duration-200 text-sm lg:text-base tracking-wider pb-2 whitespace-nowrap ${
-                pathname === '/'
-                  ? 'text-primary-600 dark:text-primary-400'
-                  : 'text-dark-600 dark:text-dark-300 hover:text-primary-600 dark:hover:text-primary-400'
-              }`}
-            >
-              HOME
-              {pathname === '/' && (
-                <span className="absolute bottom-0 left-0 right-0 h-1.5 bg-primary-500 rounded-full" />
-              )}
-            </Link>
-            <Link
-              href="/dashboard"
-              className={`relative font-bold transition-all duration-200 text-sm lg:text-base tracking-wider pb-2 whitespace-nowrap ${
-                pathname.startsWith('/dashboard')
-                  ? 'text-primary-600 dark:text-primary-400'
-                  : 'text-dark-600 dark:text-dark-300 hover:text-primary-600 dark:hover:text-primary-400'
-              }`}
-            >
-              DASHBOARD
-              {pathname.startsWith('/dashboard') && (
-                <span className="absolute bottom-0 left-0 right-0 h-1.5 bg-primary-500 rounded-full" />
-              )}
-            </Link>
+          <div className="hidden md:flex items-center gap-1 lg:gap-2 flex-1 justify-center px-4 overflow-x-auto">
+            {/* HOME - hide only on exact home page */}
+            {pathname !== '/' && (
+              <Link
+                href="/"
+                className="relative font-bold transition-all duration-200 text-xs lg:text-sm tracking-wider px-3 lg:px-4 py-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800"
+              >
+                🏠 HOME
+              </Link>
+            )}
+            
+            {/* DASHBOARD - hide only on exact /dashboard page */}
+            {pathname !== '/dashboard' && (
+              <Link
+                href="/dashboard"
+                className="relative font-bold transition-all duration-200 text-xs lg:text-sm tracking-wider px-3 lg:px-4 py-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800"
+              >
+                📊 DASHBOARD
+              </Link>
+            )}
+            
+            {/* ADD FUNDS - hide only when on add funds pages */}
+            {user && !pathname.startsWith('/dashboard/add-funds') && (
+              <Link
+                href="/dashboard/add-funds"
+                className="font-bold text-xs lg:text-sm tracking-wider px-3 lg:px-4 py-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all flex items-center gap-1"
+              >
+                💰 ADD FUNDS
+              </Link>
+            )}
+            
+            {/* ORDERS - hide only when on orders page */}
+            {user && pathname !== '/dashboard/orders' && (
+              <Link
+                href="/dashboard/orders"
+                className="font-bold text-xs lg:text-sm tracking-wider px-3 lg:px-4 py-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all flex items-center gap-1"
+              >
+                📦 ORDERS
+              </Link>
+            )}
+            
+            {/* SERVICES - hide only when on services page */}
+            {user && pathname !== '/dashboard/services' && (
+              <Link
+                href="/dashboard/services"
+                className="font-bold text-xs lg:text-sm tracking-wider px-3 lg:px-4 py-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all flex items-center gap-1"
+              >
+                ⚡ SERVICES
+              </Link>
+            )}
+            
+            {/* POLICIES - hide only when on policies page */}
+            {pathname !== '/policies' && (
+              <Link
+                href="/policies"
+                className="font-bold text-xs lg:text-sm tracking-wider px-3 lg:px-4 py-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all flex items-center gap-1"
+              >
+                📜 POLICIES
+              </Link>
+            )}
+            
+            {/* HELP - hide only when on help page */}
+            {pathname !== '/help' && (
+              <Link
+                href="/help"
+                className="font-bold text-xs lg:text-sm tracking-wider px-3 lg:px-4 py-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all flex items-center gap-1"
+              >
+                ❓ HELP
+              </Link>
+            )}
           </div>
 
           {/* Right section */}
           <div className="flex items-center gap-2 md:gap-3">
+            {/* Currency switcher */}
+            <div className="hidden sm:block">
+              <CurrencySwitcher />
+            </div>
+
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
-              className="p-1.5 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+              className="p-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
               aria-label="Toggle theme"
+              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
-              {isDark ? <FiSun className="text-base" /> : <FiMoon className="text-base" />}
+              {isDark ? <FiSun className="text-lg text-yellow-400" /> : <FiMoon className="text-lg text-blue-500" />}
             </button>
 
             {/* Auth buttons */}
@@ -134,8 +184,22 @@ export default function Navbar() {
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
                 >
-                  <div className="w-8 h-8 rounded-full gradient-bg flex items-center justify-center text-white text-xs font-bold">
-                    {userProfile?.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
+                  <div className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-primary-500/30">
+                    {userProfile?.photoURL ? (
+                      <img
+                        src={userProfile.photoURL}
+                        alt={userProfile.displayName || 'User'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.displayName || user.email || 'User')}&size=100&background=random`;
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full gradient-bg flex items-center justify-center text-white text-xs font-bold">
+                        {userProfile?.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
+                      </div>
+                    )}
                   </div>
                   {isAdmin && (
                     <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">Admin</span>
@@ -149,11 +213,30 @@ export default function Navbar() {
                       onClick={() => setDropdownOpen(false)}
                     />
                     <div className="absolute right-0 mt-2 w-64 glass-card p-2 z-20 animate-slide-down">
-                      <div className="px-4 py-3 border-b border-dark-200 dark:border-dark-700">
-                        <p className="font-semibold text-sm">
-                          {userProfile?.displayName || 'User'}
-                        </p>
-                        <p className="text-xs text-dark-500 truncate">{user.email}</p>
+                      <div className="px-4 py-3 border-b border-dark-200 dark:border-dark-700 flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full overflow-hidden ring-2 ring-primary-500/30 flex-shrink-0">
+                          {userProfile?.photoURL ? (
+                            <img
+                              src={userProfile.photoURL}
+                              alt={userProfile.displayName || 'User'}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.displayName || user.email || 'User')}&size=100&background=random`;
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full gradient-bg flex items-center justify-center text-white text-lg font-bold">
+                              {userProfile?.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">
+                            {userProfile?.displayName || 'User'}
+                          </p>
+                          <p className="text-xs text-dark-500 truncate">{user.email}</p>
+                        </div>
                       </div>
                       <div className="py-1">
                         <Link
@@ -171,6 +254,14 @@ export default function Navbar() {
                         >
                           <FiPackage className="text-dark-400" />
                           My Orders
+                        </Link>
+                        <Link
+                          href="/dashboard/api"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          <FiCode className="text-dark-400" />
+                          API
                         </Link>
                         <Link
                           href="/dashboard/settings"
@@ -220,31 +311,82 @@ export default function Navbar() {
       {isOpen && (
         <div className="md:hidden glass border-t border-dark-200/50 dark:border-dark-700/50 animate-slide-down">
           <div className="px-4 py-4 space-y-2">
-            {/* Home Link */}
-            <Link
-              href="/"
-              className={`block px-4 py-3 rounded-xl font-semibold transition-all ${
-                pathname === '/'
-                  ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
-                  : 'text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800'
-              }`}
-              onClick={() => setIsOpen(false)}
-            >
-              HOME
-            </Link>
+            {/* HOME - hide only on exact home page */}
+            {pathname !== '/' && (
+              <Link
+                href="/"
+                className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                onClick={() => setIsOpen(false)}
+              >
+                🏠 HOME
+              </Link>
+            )}
             
-            {/* Dashboard Link */}
-            <Link
-              href="/dashboard"
-              className={`block px-4 py-3 rounded-xl font-semibold transition-all ${
-                pathname.startsWith('/dashboard')
-                  ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
-                  : 'text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800'
-              }`}
-              onClick={() => setIsOpen(false)}
-            >
-              DASHBOARD
-            </Link>
+            {/* DASHBOARD - hide only on exact /dashboard page */}
+            {pathname !== '/dashboard' && (
+              <Link
+                href="/dashboard"
+                className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                onClick={() => setIsOpen(false)}
+              >
+                📊 DASHBOARD
+              </Link>
+            )}
+            
+            {/* ADD FUNDS - hide only when on add funds pages */}
+            {user && !pathname.startsWith('/dashboard/add-funds') && (
+              <Link
+                href="/dashboard/add-funds"
+                className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                onClick={() => setIsOpen(false)}
+              >
+                💰 ADD FUNDS
+              </Link>
+            )}
+            
+            {/* ORDERS - hide only when on orders page */}
+            {user && pathname !== '/dashboard/orders' && (
+              <Link
+                href="/dashboard/orders"
+                className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                onClick={() => setIsOpen(false)}
+              >
+                📦 ORDERS
+              </Link>
+            )}
+            
+            {/* SERVICES - hide only when on services page */}
+            {user && pathname !== '/dashboard/services' && (
+              <Link
+                href="/dashboard/services"
+                className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                onClick={() => setIsOpen(false)}
+              >
+                ⚡ SERVICES
+              </Link>
+            )}
+            
+            {/* POLICIES - hide only when on policies page */}
+            {pathname !== '/policies' && (
+              <Link
+                href="/policies"
+                className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                onClick={() => setIsOpen(false)}
+              >
+                📜 POLICIES
+              </Link>
+            )}
+            
+            {/* HELP - hide only when on help page */}
+            {pathname !== '/help' && (
+              <Link
+                href="/help"
+                className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                onClick={() => setIsOpen(false)}
+              >
+                ❓ HELP
+              </Link>
+            )}
 
             <div className="border-t border-dark-200 dark:border-dark-700 pt-2 mt-2">
               {user ? (

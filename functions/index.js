@@ -15,8 +15,8 @@ api.use(cors({
   credentials: true 
 }));
 
-// Mount backend routes
-api.use('/api', app);
+// Mount backend routes at root so hosting rewrite /api/** works correctly
+api.use('/', app);
 
 // Export as Cloud Function
 exports.api = functions.https.onRequest(api);

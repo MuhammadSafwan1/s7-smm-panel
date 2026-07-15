@@ -48,24 +48,49 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
       console.log('Provider:', provider.name);
       console.log('API URL:', provider.apiUrl);
       console.log('API Key (masked):', provider.apiKey ? `${provider.apiKey.substring(0, 8)}...` : 'missing');
+      console.log('Proxy URL:', PROXY_URL);
       
-      const res = await fetch(PROXY_URL, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          apiUrl: provider.apiUrl,
-          apiKey: provider.apiKey,
+      // Method 1: Try Cloudflare Worker first
+      let res;
+      let usingProxy = true;
+      
+      try {
+        res = await fetch(PROXY_URL, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            apiUrl: provider.apiUrl,
+            apiKey: provider.apiKey,
+            action: 'services',
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+      } catch (proxyError) {
+        console.warn('Proxy fetch failed, trying direct API:', proxyError.message);
+        
+        // Method 2: Fallback to direct API call
+        usingProxy = false;
+        const params = new URLSearchParams({
+          key: provider.apiKey,
           action: 'services',
-        }),
-        signal: AbortSignal.timeout(30000), // 30 seconds timeout
-      });
+        });
+        
+        res = await fetch(`${provider.apiUrl}?${params.toString()}`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          signal: AbortSignal.timeout(30000),
+        });
+      }
       
+      console.log('Using proxy:', usingProxy);
       console.log('Response status:', res.status);
       console.log('Response ok:', res.ok);
       
-      // First, get response text to handle any parsing errors
+      // Get response text to handle any parsing errors
       const responseText = await res.text();
       console.log('Response text sample:', responseText.substring(0, 200));
       
@@ -74,16 +99,22 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
         result = JSON.parse(responseText);
       } catch (parseError) {
         console.error('JSON Parse Error:', parseError);
-        throw new Error(`Invalid JSON response from proxy: ${responseText.substring(0, 100)}`);
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
       }
       
       console.log('Parsed result:', result);
       
-      if (!result.success) {
-        throw new Error(result.error || 'Provider API request failed');
+      // Handle proxy response format
+      let data;
+      if (usingProxy) {
+        if (!result.success) {
+          throw new Error(result.error || 'Provider API request failed');
+        }
+        data = result.data;
+      } else {
+        // Direct API response
+        data = result;
       }
-      
-      const data = result.data;
       
       if (Array.isArray(data)) {
         if (data.length > 0) {
@@ -112,12 +143,12 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
       // Provide more helpful error messages
       if (e.name === 'TimeoutError' || errorMsg.includes('timeout')) {
         errorMsg = `Request timeout: ${provider.name} API took too long to respond (>30s). The provider might be slow or down.`;
-      } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
-        errorMsg = `Network error: Cannot connect to proxy server. Check your internet connection.`;
+      } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('fetch')) {
+        errorMsg = `Network error: Cannot connect to proxy or provider. Possible reasons:\n• Cloudflare Worker might be down\n• Provider API might block direct requests\n• Check your internet connection\n• Provider API URL might be incorrect`;
       } else if (errorMsg.includes('Invalid JSON')) {
         errorMsg = `${provider.name} API returned invalid data. The provider might be experiencing issues.`;
       } else if (errorMsg.includes('CORS')) {
-        errorMsg = `CORS error: Browser blocked the request. This shouldn't happen with Cloudflare Worker.`;
+        errorMsg = `CORS error: Provider API blocked browser request. This requires the Cloudflare Worker proxy to work.`;
       }
       
       setError(errorMsg);

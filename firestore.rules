@@ -1,11 +1,134 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Security function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Security function to check if user is admin/owner/editor
+    function isAdminUser() {
+      return isAuthenticated() && 
+        (resource.data.role == 'admin' || 
+         request.auth.token.email == 'ms8347750@gmail.com' || 
+         request.auth.token.email == 'ms4746845@gmail.com');
+    }
+    
+    // Security function to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
 
-    // Allow everything for now (admin panel uses localStorage auth, not Firebase Auth)
+    // Users collection - users can read/write their own data, authenticated users can read count
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdminUser());
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId; // Allow user creation
+      allow list: if isAuthenticated() || isAdminUser(); // Allow counting/listing for stats
+    }
+    
+    // Orders collection - users can read their own orders, allow listing for stats
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdminUser());
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      allow list: if isAuthenticated() || isAdminUser(); // Allow counting for stats
+    }
+    
+    // Services collection - public read, admin write
+    match /services/{serviceId} {
+      allow read: if true; // Public read for service listing
+      allow write: if isAdminUser(); // Only admins can modify services
+    }
+    
+    // Categories collection - public read, admin write
+    match /categories/{categoryId} {
+      allow read: if true; // Public read
+      allow write: if isAdminUser(); // Only admins can modify
+    }
+    
+    // Platforms collection - public read, admin write
+    match /platforms/{platformId} {
+      allow read: if true; // Public read
+      allow write: if isAdminUser(); // Only admins can modify
+    }
+    
+    // Providers collection - admin only
+    match /providers/{providerId} {
+      allow read, write: if isAdminUser(); // Only admins
+    }
+    
+    // Transactions collection - users can only access their own
+    match /transactions/{transactionId} {
+      allow read, write: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdminUser());
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+    }
+    
+    // Support tickets - users can access their own, admins can access all
+    match /tickets/{ticketId} {
+      allow read, write: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdminUser());
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+    }
+    
+    // Admin logs - admin only
+    match /adminLogs/{logId} {
+      allow read, write: if isAdminUser();
+    }
+    
+    // API keys - users can only access their own
+    match /apiKeys/{keyId} {
+      allow read, write: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdminUser());
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+    }
+    
+    // Site Settings - public read, admin write
+    match /siteSettings/{settingId} {
+      allow read: if true; // Public read for site settings
+      allow write: if isAdminUser();
+    }
+    
+    // Announcements - public read, admin write
+    match /announcements/{announcementId} {
+      allow read: if true; // Public read
+      allow write: if isAdminUser();
+    }
+    
+    // Help videos - public read, admin write
+    match /helpVideos/{videoId} {
+      allow read: if true; // Public read
+      allow write: if isAdminUser();
+    }
+    
+    // Policies - public read, admin write
+    match /policies/{policyId} {
+      allow read: if true; // Public read
+      allow write: if isAdminUser();
+    }
+    
+    // Notifications - users can read their own, admins can read/write all
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdminUser());
+      allow write: if isAdminUser();
+    }
+    
+    // Payment methods - admin only
+    match /paymentMethods/{methodId} {
+      allow read: if isAuthenticated(); // Users can see available methods
+      allow write: if isAdminUser(); // Only admins can modify
+    }
+    
+    // Deny all other access
     match /{document=**} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if false;
     }
   }
 }

@@ -229,6 +229,8 @@ const syncServicesFromProvider = async (req, res) => {
         maxQuantity: parseInt(providerService.max),
         refillSupported: providerService.refill || false,
         cancelSupported: providerService.cancel || false,
+        refundSupported: providerService.refund || false,
+        refundPercent: 85,
         isActive: false, // Admin needs to activate and assign platform/category
       });
       

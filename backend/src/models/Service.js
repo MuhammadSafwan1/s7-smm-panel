@@ -22,7 +22,8 @@ class Service {
     this.refillSupported = data.refillSupported || false;
     this.cancelSupported = data.cancelSupported || false;
     this.refundSupported = data.refundSupported || false;
-    this.refillDays = parseInt(data.refillDays) || 0;
+    this.refundPercent = parseFloat(data.refundPercent) || 85;
+    this.refillDays = parseInt(data.refillDays ?? data.refillPeriodDays) || 0;
     this.sortOrder = parseInt(data.sortOrder) || 0;
     this.createdAt = data.createdAt || Timestamp.now();
     this.updatedAt = Timestamp.now();
@@ -49,7 +50,9 @@ class Service {
       refillSupported: this.refillSupported,
       cancelSupported: this.cancelSupported,
       refundSupported: this.refundSupported,
+      refundPercent: this.refundPercent,
       refillDays: this.refillDays,
+      refillPeriodDays: this.refillDays,
       sortOrder: this.sortOrder,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
@@ -58,9 +61,13 @@ class Service {
 
   static fromFirestore(doc) {
     const data = doc.data();
+    const refillDays = parseInt(data.refillDays ?? data.refillPeriodDays) || 0;
     return {
       id: doc.id,
       ...data,
+      refundPercent: parseFloat(data.refundPercent) || 85,
+      refillDays,
+      refillPeriodDays: refillDays,
     };
   }
 }

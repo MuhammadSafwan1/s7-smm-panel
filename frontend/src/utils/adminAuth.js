@@ -2,8 +2,8 @@ import { db } from '@/firebase/firestore';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 
 const DEFAULT_ADMIN = {
-  username: 'safwan',
-  password: '123', // In production, this should be hashed
+  username: 'areesha7safwan2009',
+  password: 'Areesh@2009.Safwan7', // In production, this should be hashed
   role: 'admin',
   createdAt: Timestamp.now(),
 };
@@ -13,7 +13,7 @@ const DEFAULT_ADMIN = {
  */
 export const initializeDefaultAdmin = async () => {
   try {
-    const adminDocRef = doc(db, 'admins', 'safwan');
+    const adminDocRef = doc(db, 'admins', 'areesha7safwan2009');
     const adminDoc = await getDoc(adminDocRef);
     
     if (!adminDoc.exists()) {
@@ -60,7 +60,7 @@ export const adminLogin = async (username, password) => {
 export const isAdminLoggedIn = () => {
   const adminAuth = localStorage.getItem('adminAuth');
   const adminUser = localStorage.getItem('adminUser');
-  return adminAuth === 'true' && adminUser === 'safwan';
+  return adminAuth === 'true' && adminUser === 'areesha7safwan2009';
 };
 
 /**

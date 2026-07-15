@@ -2,9 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+// Import rate limiting configurations
+const rateLimitConfigs = require('./middleware/rateLimit');
+const { logIPAccess } = require('./utils/ipUtils');
 
 const paymentRoutes = require('./routes/payment.routes');
 const adminRoutes = require('./routes/admin.routes');
@@ -18,13 +21,33 @@ const ticketRoutes = require('./routes/ticket.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const providerRoutes = require('./routes/provider.routes');
 const proxyRoutes = require('./routes/proxy.routes');
+const uploadRoutes = require('./routes/upload.routes');
+const userRoutes = require('./routes/user.routes');
+const apiV1Routes = require('./routes/api.routes');
 const { errorHandler, notFound } = require('./middleware/error.middleware');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Security middleware
-app.use(helmet());
+// Security middleware with enhanced headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://*.firebaseapp.com", "https://*.googleapis.com"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
 app.use(cors({
   origin: [
     process.env.CLIENT_URL || 'http://localhost:3000',
@@ -32,15 +55,17 @@ app.use(cors({
     'https://msfsmm.firebaseapp.com',
   ],
   credentials: true,
+  optionsSuccessStatus: 200, // For legacy browser support
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  message: { success: false, error: 'Too many requests, please try again later.' },
+// IP logging middleware
+app.use((req, res, next) => {
+  logIPAccess(req, 'api_request');
+  next();
 });
-app.use('/api/', limiter);
+
+// General rate limiting
+app.use('/api/', rateLimitConfigs.general);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
@@ -56,18 +81,21 @@ app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'MSF SMM Panel API is running', timestamp: new Date().toISOString() });
 });
 
-// Routes
+// Routes with specific rate limiting
+app.use('/api/upload', uploadRoutes);
 app.use('/api/proxy', proxyRoutes);
-app.use('/api/providers', providerRoutes);
+app.use('/api/user', rateLimitConfigs.auth, userRoutes); // Auth rate limiting for user routes
+app.use('/api', rateLimitConfigs.api, apiV1Routes); // API rate limiting for public API
+app.use('/api/providers', rateLimitConfigs.admin, providerRoutes); // Admin rate limiting
 app.use('/api/platforms', platformRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/services', serviceRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/wallet', walletRoutes);
+app.use('/api/orders', rateLimitConfigs.orders, orderRoutes); // Order rate limiting
+app.use('/api/wallet', rateLimitConfigs.payment, walletRoutes); // Payment rate limiting
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/payments', rateLimitConfigs.payment, paymentRoutes); // Payment rate limiting
+app.use('/api/admin', rateLimitConfigs.admin, adminRoutes); // Admin rate limiting
 app.use('/api/smm', smmRoutes);
 
 // Error handling

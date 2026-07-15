@@ -18,4 +18,10 @@ router.post('/orders/:orderId/cancel', verifyFirebaseToken, smmController.cancel
 router.get('/admin/orders', verifyFirebaseToken, requireAdmin, smmController.getAllOrders);
 router.get('/admin/balances', verifyFirebaseToken, requireAdmin, smmController.getProviderBalances);
 
+// Sync & Monitoring routes (Admin only)
+router.post('/admin/sync', verifyFirebaseToken, requireAdmin, smmController.syncProvidersServices);
+router.get('/admin/price-alerts', verifyFirebaseToken, requireAdmin, smmController.getPriceChangeAlerts);
+router.post('/admin/price-alerts/:serviceId/acknowledge', verifyFirebaseToken, requireAdmin, smmController.acknowledgePriceChange);
+router.get('/admin/sync-logs', verifyFirebaseToken, requireAdmin, smmController.getSyncLogs);
+
 module.exports = router;

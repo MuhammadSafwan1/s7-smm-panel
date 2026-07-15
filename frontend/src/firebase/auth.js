@@ -13,7 +13,12 @@ import {
 import app from './firebase.config';
 
 const auth = getAuth(app);
+
+// Simple Google Provider Setup
 const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
 
 // Register with email & password
 export const registerWithEmail = async (email, password, displayName) => {
@@ -37,13 +42,39 @@ export const loginWithEmail = async (email, password) => {
   }
 };
 
-// Login with Google
+// Simple Google Login with Popup
 export const loginWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    return { user: result.user, error: null };
+    const user = result.user;
+    
+    console.log('✅ Google login successful:', {
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName
+    });
+    
+    return { user, error: null };
   } catch (error) {
-    return { user: null, error: error.message };
+    console.error('❌ Google login error:', error);
+    
+    let errorMessage = 'Failed to sign in with Google';
+    
+    switch (error.code) {
+      case 'auth/popup-closed-by-user':
+        errorMessage = 'Sign-in cancelled';
+        break;
+      case 'auth/popup-blocked':
+        errorMessage = 'Please allow popups for this site';
+        break;
+      case 'auth/cancelled-popup-request':
+        errorMessage = 'Sign-in cancelled';
+        break;
+      default:
+        errorMessage = error.message || 'Failed to sign in with Google';
+    }
+    
+    return { user: null, error: errorMessage };
   }
 };
 

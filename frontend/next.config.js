@@ -13,6 +13,8 @@ const nextConfig = {
       },
     ],
   },
+  // Ensure sitemap and robots.txt are included in export
+  trailingSlash: false,
   webpack: (config) => {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
     return config;

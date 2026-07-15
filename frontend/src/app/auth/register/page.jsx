@@ -80,6 +80,7 @@ export default function RegisterPage() {
 
   const handleGoogleSignIn = async () => {
     setError(null);
+
     const { success, error: googleError } = await signInWithGoogle();
     if (success) {
       toast.success('Account created successfully!');
@@ -92,9 +93,6 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 relative">
-      <div className="absolute inset-0 grid-bg opacity-30" />
-      <div className="absolute inset-0 gradient-bg-subtle" />
-
       <div className="relative w-full max-w-md">
         <Link
           href="/"
@@ -105,7 +103,6 @@ export default function RegisterPage() {
         </Link>
 
         <div className="glass-card p-8">
-          {/* Error or Success State */}
           {error ? (
             <div className="text-center mb-8">
               <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-500/20 flex items-center justify-center mx-auto mb-4">
@@ -124,12 +121,11 @@ export default function RegisterPage() {
                 Create Account
               </h1>
               <p className="text-dark-500 dark:text-dark-400">
-                Join FFMarket and start buying premium accounts
+                Join MSF SMM and start boosting your social media
               </p>
             </div>
           )}
 
-          {/* Error Alert Box */}
           {error && (
             <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 flex items-start gap-3">
               <FiAlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5 text-xl" />
@@ -202,7 +198,6 @@ export default function RegisterPage() {
                 </button>
               </div>
 
-              {/* Password Requirements */}
               {password.length > 0 && (
                 <div className="mt-3 p-4 rounded-lg bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
                   <p className="text-xs font-semibold text-dark-600 dark:text-dark-400 mb-3">
@@ -290,7 +285,6 @@ export default function RegisterPage() {
                 </button>
               </div>
 
-              {/* Password Match Status */}
               {confirmPassword.length > 0 && (
                 <div className="mt-2">
                   {passwordsMatch ? (
@@ -311,7 +305,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={authLoading || !isPasswordValid || !passwordsMatch}
-              className="btn-primary w-full btn-lg"
+              className="btn-primary w-full btn-lg disabled:opacity-50"
             >
               {authLoading ? <Spinner size="sm" /> : 'Create Account'}
             </button>

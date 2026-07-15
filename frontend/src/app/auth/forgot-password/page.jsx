@@ -54,9 +54,6 @@ export default function ForgotPasswordPage() {
   if (submitted) {
     return (
       <div className="min-h-screen flex items-center justify-center py-12 px-4 relative">
-        <div className="absolute inset-0 grid-bg opacity-30" />
-        <div className="absolute inset-0 gradient-bg-subtle" />
-
         <div className="relative w-full max-w-md">
           <Link
             href="/"
@@ -116,9 +113,6 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 relative">
-      <div className="absolute inset-0 grid-bg opacity-30" />
-      <div className="absolute inset-0 gradient-bg-subtle" />
-
       <div className="relative w-full max-w-md">
         <Link
           href="/"
