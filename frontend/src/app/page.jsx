@@ -84,28 +84,32 @@ export default function HomePage() {
     
     if (cachedData && lastFetch && (now - parseInt(lastFetch)) < 5 * 60 * 1000) {
       // Use cached data (less than 5 minutes old) - 0 reads!
-      console.log('✅ Using cached data (saves Firestore reads)');
-      const parsed = JSON.parse(cachedData);
-      setPlatforms(parsed.platforms || []);
-      setTopUsers(parsed.topUsers || []);
-      setAdminSettings(parsed.adminSettings || null);
-      setStats(parsed.stats || {});
-      setDataLoaded(true);
-      setLoading(false);
-      setLoadingPlatforms(false);
+      try {
+        const parsed = JSON.parse(cachedData);
+        setPlatforms(parsed.platforms || []);
+        setTopUsers(parsed.topUsers || []);
+        setAdminSettings(parsed.adminSettings || null);
+        setStats(parsed.stats || {});
+        setDataLoaded(true);
+        setLoading(false);
+        setLoadingPlatforms(false);
+      } catch (error) {
+        console.error('Error parsing cached data:', error);
+        // Clear bad cache and fetch fresh
+        localStorage.removeItem('homepageData');
+        localStorage.removeItem('homepageLastFetch');
+        fetchAllData();
+      }
     } else {
       // Fetch fresh data
-      console.log('🔄 Fetching fresh data from Firestore...');
       fetchAllData();
     }
   }, [retryCount]);
 
   const fetchAllData = async () => {
-    console.log('📡 Fetching all data from Firestore...');
     setLoading(true);
     try {
       // Fetch admin settings from siteSettings/general (1 READ)
-      console.log('1️⃣ Fetching admin settings from siteSettings...');
       const settingsDocRef = doc(db, 'siteSettings', 'general');
       const settingsSnap = await getDoc(settingsDocRef);
       let adminSettingsData = null;
@@ -116,9 +120,7 @@ export default function HomePage() {
           adminDescription: data.adminDescription || '',
           adminPhoto: data.adminPhoto || null
         };
-        console.log('✅ Admin settings loaded:', adminSettingsData);
       } else {
-        console.log('⚠️ No admin settings found, using defaults');
         adminSettingsData = {
           adminName: 'MSF SMM Admin',
           adminDescription: 'Professional SMM Panel Services',
@@ -126,8 +128,7 @@ export default function HomePage() {
         };
       }
 
-      // Fetch platforms (Multiple reads, but sorted client-side)
-      console.log('2️⃣ Fetching platforms...');
+      // Fetch platforms
       const platformsSnap = await getDocs(
         query(collection(db, 'platforms'), where('isActive', '==', true))
       );
@@ -135,13 +136,10 @@ export default function HomePage() {
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
       setPlatforms(platformsData);
-      console.log('✅ Platforms loaded:', platformsData.length);
 
-      // Fetch all users (Multiple reads)
-      console.log('3️⃣ Fetching users...');
+      // Fetch all users
       const usersSnap = await getDocs(collection(db, 'users'));
       const usersData = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      console.log('✅ Users loaded:', usersData.length);
       
       // Calculate online users (active in last 5 minutes)
       const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
@@ -150,20 +148,14 @@ export default function HomePage() {
         const lastSeen = u.lastSeen?.toMillis?.() || u.lastSeen?.seconds * 1000 || u.lastSeen;
         return lastSeen > fiveMinutesAgo;
       }).length;
-      console.log('✅ Online users (last 5 min):', onlineCount, 'out of', usersData.length);
 
-      // Fetch all orders (Multiple reads)
-      console.log('4️⃣ Fetching orders...');
+      // Fetch all orders
       const ordersSnap = await getDocs(collection(db, 'orders'));
-      console.log('✅ Orders loaded:', ordersSnap.docs.length);
       
-      // Fetch all services (Multiple reads)
-      console.log('5️⃣ Fetching services...');
+      // Fetch all services
       const servicesSnap = await getDocs(collection(db, 'services'));
-      console.log('✅ Services loaded:', servicesSnap.docs.length);
       
-      // Calculate top 5 users by total orders
-      console.log('6️⃣ Calculating top users...');
+      // Calculate top 10 users by total orders
       const userOrderCounts = {};
       ordersSnap.docs.forEach(doc => {
         const order = doc.data();
@@ -171,8 +163,6 @@ export default function HomePage() {
           userOrderCounts[order.userId] = (userOrderCounts[order.userId] || 0) + 1;
         }
       });
-      
-      console.log('👥 Users with orders:', Object.keys(userOrderCounts).length);
       
       const topUsersData = Object.entries(userOrderCounts)
         .map(([userId, orderCount]) => {
@@ -186,9 +176,8 @@ export default function HomePage() {
           };
         })
         .sort((a, b) => b.orderCount - a.orderCount)
-        .slice(0, 10); // Changed from 5 to 10
+        .slice(0, 10);
 
-      console.log('🏆 Top 10 users:', topUsersData);
       setTopUsers(topUsersData);
       
       const finalStats = {
@@ -198,12 +187,11 @@ export default function HomePage() {
         totalServices: servicesSnap.docs.length
       };
       
-      console.log('📊 Final Stats:', finalStats);
       setStats(finalStats);
       setAdminSettings(adminSettingsData);
       setDataLoaded(true);
       
-      // Cache ALL data for 5 minutes (including admin settings)
+      // Cache ALL data for 5 minutes
       localStorage.setItem('homepageData', JSON.stringify({
         platforms: platformsData,
         topUsers: topUsersData,
@@ -211,17 +199,13 @@ export default function HomePage() {
         stats: finalStats
       }));
       localStorage.setItem('homepageLastFetch', Date.now().toString());
-      
-      console.log('✅ All data loaded successfully and cached for 5 minutes!');
 
     } catch (error) {
-      console.error('❌ Error loading data:', error);
-      console.error('Error details:', error.message);
+      console.error('Error loading homepage data:', error);
       setDataLoaded(false);
     } finally {
       setLoading(false);
       setLoadingPlatforms(false);
-      console.log('✅ Loading complete!');
     }
   };
 

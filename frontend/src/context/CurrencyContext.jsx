@@ -87,12 +87,8 @@ export function CurrencyProvider({ children }) {
     const cur       = CURRENCIES.find(c => c.code === currency) || CURRENCIES[0];
     const converted = convert(pkrAmount);
     
-    // Determine decimals based on currency and amount
-    let decimals = 2; // Default for USD, EUR, etc
-    if (['PKR', 'BDT', 'INR', 'SAR', 'AED'].includes(currency)) {
-      // For high-value currencies: show decimals only if amount is small
-      decimals = converted < 10 ? 4 : 0;
-    }
+    // Always show 3 decimal places for consistency
+    const decimals = 3;
     
     // Use toLocaleString for thousands separators
     const formatted = converted.toLocaleString('en-US', {
