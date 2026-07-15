@@ -16,7 +16,6 @@ import { auth } from '@/firebase/firebase.config';
 const adminNavItems = {
   main: [
     { href: '/s7bHG74TY09161NJASKLPW',            label: 'Dashboard',  icon: FiGrid },
-    { href: '/s7bHG74TY09161NJASKLPW/access-logs', label: 'Access Logs', icon: FiActivity },
     { href: '/s7bHG74TY09161NJASKLPW/settings',   label: 'Settings',   icon: FiSettings },
     { href: '/s7bHG74TY09161NJASKLPW/service-monitor', label: 'Monitor', icon: FiActivity },
     { href: '/s7bHG74TY09161NJASKLPW/announcements', label: 'Announcements', icon: FiVideo },
