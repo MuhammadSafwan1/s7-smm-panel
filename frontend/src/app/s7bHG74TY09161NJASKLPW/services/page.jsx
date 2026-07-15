@@ -9,6 +9,8 @@ import { uploadFile } from '@/firebase/storage';
 import { useCurrency } from '@/context/CurrencyContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+// Try direct API first, fallback to proxy
+const USE_DIRECT_API = true; // Set to false to use proxy
 const PROXY_URL = 'https://smm-proxy.ms8347750.workers.dev'; // Cloudflare Worker proxy
 
 const inputCls = "w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white placeholder-dark-400 dark:placeholder-dark-500 transition-all";
@@ -48,13 +50,50 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
       console.log('Provider:', provider.name);
       console.log('API URL:', provider.apiUrl);
       console.log('API Key (masked):', provider.apiKey ? `${provider.apiKey.substring(0, 8)}...` : 'missing');
-      console.log('Proxy URL:', PROXY_URL);
+      console.log('Use Direct API:', USE_DIRECT_API);
       
-      // Method 1: Try Cloudflare Worker first
       let res;
-      let usingProxy = true;
-      
-      try {
+      let usingProxy = false;
+
+      if (USE_DIRECT_API) {
+        // Try direct API first (works if provider allows CORS)
+        console.log('Attempting direct API call...');
+        try {
+          const params = new URLSearchParams({
+            key: provider.apiKey,
+            action: 'services',
+          });
+          
+          res = await fetch(`${provider.apiUrl}?${params.toString()}`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            signal: AbortSignal.timeout(30000),
+          });
+          console.log('Direct API call successful!');
+        } catch (directError) {
+          console.warn('Direct API failed, trying proxy:', directError.message);
+          
+          // Fallback to proxy
+          usingProxy = true;
+          res = await fetch(PROXY_URL, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              apiUrl: provider.apiUrl,
+              apiKey: provider.apiKey,
+              action: 'services',
+            }),
+            signal: AbortSignal.timeout(30000),
+          });
+        }
+      } else {
+        // Use proxy by default
+        console.log('Using Cloudflare Worker proxy...');
+        usingProxy = true;
         res = await fetch(PROXY_URL, {
           method: 'POST',
           headers: { 
@@ -65,23 +104,6 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
             apiKey: provider.apiKey,
             action: 'services',
           }),
-          signal: AbortSignal.timeout(30000),
-        });
-      } catch (proxyError) {
-        console.warn('Proxy fetch failed, trying direct API:', proxyError.message);
-        
-        // Method 2: Fallback to direct API call
-        usingProxy = false;
-        const params = new URLSearchParams({
-          key: provider.apiKey,
-          action: 'services',
-        });
-        
-        res = await fetch(`${provider.apiUrl}?${params.toString()}`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
           signal: AbortSignal.timeout(30000),
         });
       }
@@ -104,7 +126,7 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
       
       console.log('Parsed result:', result);
       
-      // Handle proxy response format
+      // Handle proxy response format vs direct API format
       let data;
       if (usingProxy) {
         if (!result.success) {
@@ -113,6 +135,9 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
         data = result.data;
       } else {
         // Direct API response
+        if (result.error) {
+          throw new Error(`Provider error: ${result.error}`);
+        }
         data = result;
       }
       
