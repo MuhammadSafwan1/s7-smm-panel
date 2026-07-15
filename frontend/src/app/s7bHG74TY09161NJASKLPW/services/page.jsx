@@ -9,7 +9,7 @@ import { uploadFile } from '@/firebase/storage';
 import { useCurrency } from '@/context/CurrencyContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-const PROXY_URL = `${API_URL}/proxy/smm`; // Use backend proxy instead of Cloudflare Worker
+const PROXY_URL = 'https://smm-proxy.ms8347750.workers.dev'; // Cloudflare Worker proxy
 
 const inputCls = "w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white placeholder-dark-400 dark:placeholder-dark-500 transition-all";
 const labelCls = "block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2";
@@ -47,16 +47,12 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
       console.log('=== FETCHING SERVICES ===');
       console.log('Provider:', provider.name);
       console.log('API URL:', provider.apiUrl);
-      console.log('Proxy URL:', PROXY_URL);
+      console.log('API Key (masked):', provider.apiKey ? `${provider.apiKey.substring(0, 8)}...` : 'missing');
       
       const res = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          // Add auth token if available
-          ...(typeof window !== 'undefined' && localStorage.getItem('token') 
-            ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-            : {})
         },
         body: JSON.stringify({
           apiUrl: provider.apiUrl,
@@ -67,49 +63,61 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
       });
       
       console.log('Response status:', res.status);
+      console.log('Response ok:', res.ok);
       
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('Response error:', errorText);
-        throw new Error(`HTTP ${res.status}: ${errorText || 'Network error'}`);
+      // First, get response text to handle any parsing errors
+      const responseText = await res.text();
+      console.log('Response text sample:', responseText.substring(0, 200));
+      
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('JSON Parse Error:', parseError);
+        throw new Error(`Invalid JSON response from proxy: ${responseText.substring(0, 100)}`);
       }
       
-      const result = await res.json();
-      console.log('Response result:', result);
+      console.log('Parsed result:', result);
       
       if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch services');
+        throw new Error(result.error || 'Provider API request failed');
       }
       
       const data = result.data;
       
       if (Array.isArray(data)) {
-        // Log first service to see available fields
         if (data.length > 0) {
           console.log('=== PROVIDER API RESPONSE ===');
           console.log('Sample service fields:', Object.keys(data[0]));
           console.log('Full sample service:', data[0]);
           console.log('Total services loaded:', data.length);
+        } else {
+          console.warn('Provider returned empty services array');
         }
         setList(data);
       } else if (data?.error) {
         throw new Error(`Provider error: ${data.error}`);
       } else {
+        console.error('Unexpected data format:', data);
         throw new Error('Provider returned invalid response format');
       }
     } catch (e) {
-      console.error('Load services error:', e);
+      console.error('=== LOAD SERVICES ERROR ===');
+      console.error('Error name:', e.name);
+      console.error('Error message:', e.message);
+      console.error('Full error:', e);
+      
       let errorMsg = e.message;
       
       // Provide more helpful error messages
-      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
-        errorMsg = 'Network error: Cannot connect to backend server. Make sure backend is running.';
-      } else if (errorMsg.includes('timeout')) {
-        errorMsg = 'Request timeout: Provider API is taking too long to respond.';
-      } else if (errorMsg.includes('JSON')) {
-        errorMsg = 'Invalid response: Provider API returned malformed data.';
-      } else if (errorMsg.includes('401') || errorMsg.includes('403')) {
-        errorMsg = 'Authentication error: Invalid API credentials.';
+      if (e.name === 'TimeoutError' || errorMsg.includes('timeout')) {
+        errorMsg = `Request timeout: ${provider.name} API took too long to respond (>30s). The provider might be slow or down.`;
+      } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+        errorMsg = `Network error: Cannot connect to proxy server. Check your internet connection.`;
+      } else if (errorMsg.includes('Invalid JSON')) {
+        errorMsg = `${provider.name} API returned invalid data. The provider might be experiencing issues.`;
+      } else if (errorMsg.includes('CORS')) {
+        errorMsg = `CORS error: Browser blocked the request. This shouldn't happen with Cloudflare Worker.`;
       }
       
       setError(errorMsg);
