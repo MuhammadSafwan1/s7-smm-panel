@@ -58,10 +58,16 @@ export default function AdminLayout({ children }) {
           return;
         }
 
+        // Wait for auth to finish loading
+        if (authLoading) {
+          return;
+        }
+
         // Check if user is authenticated
         if (!user) {
           console.log('No user authenticated, redirecting to login');
           router.push('/s7bHG74TY09161NJASKLPW/s7-secure-access-2024');
+          setChecking(false);
           return;
         }
 
