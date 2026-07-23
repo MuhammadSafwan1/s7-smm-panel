@@ -354,9 +354,7 @@ export default function Navbar() {
               <>
                 {/* Currency switcher - only for logged in users */}
                 {user && (
-                  <div className="hidden sm:block">
-                    <CurrencySwitcher />
-                  </div>
+                  <CurrencySwitcher />
                 )}
 
                 {/* Announcement bell - only for logged in users */}
@@ -378,7 +376,7 @@ export default function Navbar() {
 
                 {/* Auth buttons */}
                 {user ? (
-                  <div className="relative hidden md:block">
+                  <div className="relative">
                     <button
                       onClick={() => setDropdownOpen(!dropdownOpen)}
                       className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
@@ -411,16 +409,19 @@ export default function Navbar() {
                           className="fixed inset-0 z-10"
                           onClick={() => setDropdownOpen(false)}
                         />
-                        <div className="absolute right-0 mt-2 w-64 glass-card p-2 z-20 animate-slide-down max-h-[80vh] overflow-y-auto">
-                          {/* Close button for mobile */}
-                          <button
-                            onClick={() => setDropdownOpen(false)}
-                            className="md:hidden absolute top-2 right-2 p-1.5 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all z-10"
-                            aria-label="Close menu"
-                          >
-                            <FiX className="text-lg" />
-                          </button>
+                        <div className="absolute right-0 mt-2 w-64 glass-card rounded-2xl shadow-2xl border border-dark-200 dark:border-dark-700 z-20 animate-slide-down max-h-[85vh] overflow-y-auto flex flex-col">
+                          {/* Close button for mobile - Always on top */}
+                          <div className="sticky top-0 z-30 bg-white dark:bg-dark-900 rounded-t-2xl px-2 py-2 border-b border-dark-200 dark:border-dark-700 flex justify-end">
+                            <button
+                              onClick={() => setDropdownOpen(false)}
+                              className="p-2 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all shadow-sm"
+                              aria-label="Close menu"
+                            >
+                              <FiX className="text-lg text-dark-600 dark:text-dark-300" />
+                            </button>
+                          </div>
                           
+                          {/* User Info */}
                           <div className="px-4 py-3 border-b border-dark-200 dark:border-dark-700 flex items-center gap-3">
                             <div className="w-12 h-12 rounded-full overflow-hidden ring-2 ring-primary-500/30 flex-shrink-0">
                               {userProfile?.photoURL ? (
@@ -446,7 +447,9 @@ export default function Navbar() {
                               <p className="text-xs text-dark-500 truncate">{user.email}</p>
                             </div>
                           </div>
-                          <div className="py-1">
+                          
+                          {/* Menu Items - Scrollable */}
+                          <div className="py-2 px-2 flex-1 overflow-y-auto">
                             <Link
                               href="/dashboard"
                               className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
@@ -480,7 +483,9 @@ export default function Navbar() {
                               Settings
                             </Link>
                           </div>
-                          <div className="border-t border-dark-200 dark:border-dark-700 pt-1">
+                          
+                          {/* Logout Button - Sticky at bottom */}
+                          <div className="sticky bottom-0 bg-white dark:bg-dark-900 border-t border-dark-200 dark:border-dark-700 p-2 rounded-b-2xl">
                             <button
                               onClick={handleLogout}
                               className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 w-full transition-all"

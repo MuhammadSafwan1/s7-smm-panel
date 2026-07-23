@@ -364,27 +364,28 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="min-h-screen py-6 px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+    <div className="min-h-screen py-4 sm:py-6 px-3 sm:px-4 lg:px-8 xl:px-12 2xl:px-16">
       <div className="max-w-[1920px] mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={handleBack} className="flex items-center justify-center w-10 h-10 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72] transition-all" title="Back to Dashboard">
-            <FiArrowLeft size={18} />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <button onClick={handleBack} className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72] transition-all" title="Back to Dashboard">
+            <FiArrowLeft size={16} className="sm:hidden" />
+            <FiArrowLeft size={18} className="hidden sm:block" />
           </button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Orders</h1>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-0.5">{filteredOrders.length} of {orders.length} orders</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">My Orders</h1>
+            <p className="text-gray-400 dark:text-gray-500 text-xs sm:text-sm mt-0.5">{filteredOrders.length} of {orders.length} orders</p>
           </div>
           <button onClick={syncActiveOrders} disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#2f4a72] text-sm font-semibold transition-all">
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#2f4a72] text-xs sm:text-sm font-semibold transition-all">
             <FiRefreshCcw className={syncing ? 'animate-spin' : ''} size={14} />
             {syncing ? 'Syncing...' : 'Sync Now'}
           </button>
         </div>
 
         {/* Filter Section */}
-        <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-4 mb-6 border border-gray-100 dark:border-[#253a5e]">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white dark:bg-[#1a2742] rounded-xl sm:rounded-2xl p-3 sm:p-4 mb-4 sm:mb-6 border border-gray-100 dark:border-[#253a5e]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4">
             <div className="relative">
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
               <input 
@@ -392,7 +393,7 @@ export default function OrdersPage() {
                 placeholder="Search by Order ID, Service, Platform..." 
                 value={searchTerm} 
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-[#253a5e]/50 border border-gray-200 dark:border-[#253a5e] rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+                className="w-full pl-9 sm:pl-10 pr-4 py-2 sm:py-2.5 bg-gray-50 dark:bg-[#253a5e]/50 border border-gray-200 dark:border-[#253a5e] rounded-xl text-xs sm:text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
               />
             </div>
             <div className="relative">
@@ -400,7 +401,7 @@ export default function OrdersPage() {
               <select 
                 value={statusFilter} 
                 onChange={e => setStatusFilter(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-[#253a5e]/50 border border-gray-200 dark:border-[#253a5e] rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer transition-all"
+                className="w-full pl-9 sm:pl-10 pr-4 py-2 sm:py-2.5 bg-gray-50 dark:bg-[#253a5e]/50 border border-gray-200 dark:border-[#253a5e] rounded-xl text-xs sm:text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer transition-all"
               >
                 <option value="all">All Orders</option>
                 <option value="pending">Pending</option>
@@ -514,7 +515,7 @@ export default function OrdersPage() {
             </div>
 
             {/* Mobile Card View */}
-            <div className="md:hidden space-y-3">
+            <div className="md:hidden space-y-2 sm:space-y-3">
               {filteredOrders.map(order => {
                 const status = getStatus(order.status);
                 const StatusIcon = status.icon;
@@ -533,43 +534,43 @@ export default function OrdersPage() {
                 })();
                 
                 return (
-                  <div key={order.id} className="bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e]">
-                    <div className="flex items-start justify-between gap-3 mb-3">
+                  <div key={order.id} className="bg-white dark:bg-[#1a2742] rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-gray-100 dark:border-[#253a5e]">
+                    <div className="flex items-start justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-mono text-sm font-bold text-blue-600 dark:text-blue-400">#{order.id.substring(0, 8)}</span>
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${status.color}`}>
-                            <StatusIcon className={`text-[10px] ${status.spinning ? 'animate-spin' : ''}`} />
+                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
+                          <span className="font-mono text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400">#{order.id.substring(0, 8)}</span>
+                          <span className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-medium ${status.color}`}>
+                            <StatusIcon className={`text-[9px] sm:text-[10px] ${status.spinning ? 'animate-spin' : ''}`} />
                             {status.label}
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{order.serviceName || 'N/A'}</p>
+                        <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white truncate">{order.serviceName || 'N/A'}</p>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="text-base font-bold text-blue-600 dark:text-blue-400">{format(order.charge || 0)}</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">Qty: {order.quantity?.toLocaleString()}</p>
+                        <p className="text-sm sm:text-base font-bold text-blue-600 dark:text-blue-400">{format(order.charge || 0)}</p>
+                        <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">Qty: {order.quantity?.toLocaleString()}</p>
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mb-3">
+                    <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-2 sm:mb-3">
                       <span>ID: <span className="font-mono text-blue-600 dark:text-blue-400">{order.serviceId || 'N/A'}</span></span>
-                      <span>Platform: {order.platformName || 'N/A'}</span>
-                      <span>Date: {formatDate(order.createdAt)}</span>
+                      <span className="truncate">Platform: {order.platformName || 'N/A'}</span>
+                      <span className="whitespace-nowrap">Date: {formatDate(order.createdAt)}</span>
                     </div>
-                    <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-[#253a5e]">
+                    <div className="flex items-center gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-gray-100 dark:border-[#253a5e]">
                       {canCancel && (
                         <button onClick={() => handleCancel(order)} disabled={!!actionLoading}
-                          className="flex-1 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-semibold hover:bg-red-100 dark:hover:bg-red-500/20 transition-all border border-red-200 dark:border-red-500/30 text-center">
+                          className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] sm:text-xs font-semibold hover:bg-red-100 dark:hover:bg-red-500/20 transition-all border border-red-200 dark:border-red-500/30 text-center whitespace-nowrap">
                           {actionLoading === order.id + '-cancel' ? '...' : 'Cancel'}
                         </button>
                       )}
                       {canRefill && (
                         <button onClick={() => handleRefill(order)} disabled={!!actionLoading}
-                          className="flex-1 px-3 py-2 rounded-lg bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 text-xs font-semibold hover:bg-green-100 dark:hover:bg-green-500/20 transition-all border border-green-200 dark:border-green-500/30 text-center">
+                          className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 text-[10px] sm:text-xs font-semibold hover:bg-green-100 dark:hover:bg-green-500/20 transition-all border border-green-200 dark:border-green-500/30 text-center whitespace-nowrap">
                           {actionLoading === order.id + '-refill' ? '...' : 'Refill'}
                         </button>
                       )}
                       <button onClick={() => setSelectedOrder(selectedOrder?.id === order.id ? null : order)}
-                        className="flex-1 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all border border-blue-200 dark:border-blue-500/30 text-center">
+                        className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] sm:text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all border border-blue-200 dark:border-blue-500/30 text-center whitespace-nowrap">
                         {selectedOrder?.id === order.id ? 'Hide' : 'Details'}
                       </button>
                     </div>
