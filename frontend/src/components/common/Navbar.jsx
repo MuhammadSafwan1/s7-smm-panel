@@ -61,7 +61,7 @@ export default function Navbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [isApp2FAVerified, setIsApp2FAVerified] = useState(false);
-  const [siteLogo, setSiteLogo] = useState(''); // NEW: Site logo state
+  const [siteLogo, setSiteLogo] = useState('');
   const pathname = usePathname();
   const { user, userProfile, isAdmin } = useAuth();
 
@@ -85,26 +85,18 @@ export default function Navbar() {
   // Check verification status
   useEffect(() => {
     const checkVerification = () => {
-      // Check Cloudflare verification (use localStorage for persistence across tabs)
       const verified = localStorage.getItem('cf_verified') || sessionStorage.getItem('cf_verified');
       const verifiedAt = localStorage.getItem('cf_verified_at') || sessionStorage.getItem('cf_verified_at');
       
-      console.log('[Navbar] Checking CF verification:', { verified, verifiedAt });
-      
       if (verified === 'true' && verifiedAt) {
         const elapsed = Date.now() - parseInt(verifiedAt);
-        console.log('[Navbar] CF verification time elapsed (ms):', elapsed, 'Max allowed:', 30 * 60 * 1000);
-        if (elapsed < 30 * 60 * 1000) { // 30 minutes
+        if (elapsed < 30 * 60 * 1000) {
           setIsVerified(true);
-          console.log('[Navbar] ✅ CF verified = TRUE');
-          // Sync to both storages
           localStorage.setItem('cf_verified', 'true');
           localStorage.setItem('cf_verified_at', verifiedAt);
           sessionStorage.setItem('cf_verified', 'true');
           sessionStorage.setItem('cf_verified_at', verifiedAt);
         } else {
-          // Clear expired verification from both storages
-          console.log('[Navbar] ❌ CF verification EXPIRED');
           localStorage.removeItem('cf_verified');
           localStorage.removeItem('cf_verified_at');
           sessionStorage.removeItem('cf_verified');
@@ -112,30 +104,21 @@ export default function Navbar() {
           setIsVerified(false);
         }
       } else {
-        console.log('[Navbar] ❌ CF not verified or missing timestamp');
         setIsVerified(false);
       }
 
-      // Check app 2FA verification (use localStorage for persistence across tabs)
       const app2FAVerified = localStorage.getItem('app_2fa_verified') || sessionStorage.getItem('app_2fa_verified');
       const app2FAVerifiedAt = localStorage.getItem('app_2fa_verified_at') || sessionStorage.getItem('app_2fa_verified_at');
       
-      console.log('[Navbar] Checking App 2FA verification:', { app2FAVerified, app2FAVerifiedAt });
-      
       if (app2FAVerified === 'true' && app2FAVerifiedAt) {
         const elapsed = Date.now() - parseInt(app2FAVerifiedAt);
-        console.log('[Navbar] App 2FA time elapsed (ms):', elapsed, 'Max allowed:', 24 * 60 * 60 * 1000);
-        if (elapsed < 24 * 60 * 60 * 1000) { // 24 hours
+        if (elapsed < 24 * 60 * 60 * 1000) {
           setIsApp2FAVerified(true);
-          console.log('[Navbar] ✅ App 2FA verified = TRUE');
-          // Sync to both storages
           localStorage.setItem('app_2fa_verified', 'true');
           localStorage.setItem('app_2fa_verified_at', app2FAVerifiedAt);
           sessionStorage.setItem('app_2fa_verified', 'true');
           sessionStorage.setItem('app_2fa_verified_at', app2FAVerifiedAt);
         } else {
-          // Clear expired 2FA
-          console.log('[Navbar] ❌ App 2FA EXPIRED');
           localStorage.removeItem('app_2fa_verified');
           localStorage.removeItem('app_2fa_verified_at');
           sessionStorage.removeItem('app_2fa_verified');
@@ -143,27 +126,18 @@ export default function Navbar() {
           setIsApp2FAVerified(false);
         }
       } else {
-        console.log('[Navbar] ❌ App 2FA not verified or missing timestamp');
         setIsApp2FAVerified(false);
       }
-      
-      console.log('[Navbar] FINAL STATE:', { 
-        user: !!user, 
-        isVerified, 
-        isApp2FAVerified,
-        willShowCategories: !!(user && isVerified && isApp2FAVerified)
-      });
     };
 
     checkVerification();
     
-    // Listen for storage changes (verification updates)
     const handleStorageChange = () => {
       checkVerification();
     };
     
     window.addEventListener('storage', handleStorageChange);
-    const interval = setInterval(checkVerification, 500); // Check every 500ms for faster updates
+    const interval = setInterval(checkVerification, 500);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
@@ -171,14 +145,12 @@ export default function Navbar() {
     };
   }, [pathname]);
 
-  // Fetch site logo from Firestore
   const fetchSiteLogo = async () => {
     try {
       const docRef = doc(db, 'siteSettings', 'general');
       const docSnap = await getDoc(docRef);
       if (docSnap.exists() && docSnap.data().siteLogo) {
         setSiteLogo(docSnap.data().siteLogo);
-        // Also update favicon
         updateFavicon(docSnap.data().siteLogo);
       }
     } catch (error) {
@@ -186,7 +158,6 @@ export default function Navbar() {
     }
   };
 
-  // Update favicon dynamically
   const updateFavicon = (logoUrl) => {
     if (!logoUrl) return;
     
@@ -222,7 +193,6 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16 md:h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group hover:opacity-90 transition-opacity flex-shrink-0">
-            {/* Logo - Clean circle, matches text height */}
             <div className="relative w-10 h-10 sm:w-12 h-12 md:w-[48px] md:h-[48px] rounded-full flex items-center justify-center hover:scale-110 transition-transform overflow-hidden" style={{
               minWidth: '40px',
               minHeight: '40px'
@@ -240,7 +210,6 @@ export default function Navbar() {
               )}
             </div>
             
-            {/* Animated text - separate from logo with fixed width */}
             <span className="text-xl sm:text-2xl md:text-3xl font-black inline-block" style={{
               minWidth: '200px',
               color: '#17599F',
@@ -259,7 +228,6 @@ export default function Navbar() {
 
           {/* Center Navigation */}
           <div className="hidden md:flex items-center gap-1 lg:gap-2 flex-1 justify-center px-4 overflow-x-auto">
-            {/* HOME - hide only on exact home page */}
             {pathname !== '/' && (
               <Link
                 href="/"
@@ -269,10 +237,8 @@ export default function Navbar() {
               </Link>
             )}
             
-            {/* Only show these if user is logged in AND both Cloudflare + App 2FA verified */}
             {user && isVerified && isApp2FAVerified && (
               <>
-                {/* DASHBOARD - hide only on exact /dashboard page */}
                 {pathname !== '/dashboard' && (
                   <Link
                     href="/dashboard"
@@ -282,7 +248,6 @@ export default function Navbar() {
                   </Link>
                 )}
                 
-                {/* ADD FUNDS - hide only when on add funds pages */}
                 {!pathname.startsWith('/dashboard/add-funds') && (
                   <Link
                     href="/dashboard/add-funds"
@@ -292,7 +257,6 @@ export default function Navbar() {
                   </Link>
                 )}
                 
-                {/* ORDERS - hide only when on orders page */}
                 {pathname !== '/dashboard/orders' && (
                   <Link
                     href="/dashboard/orders"
@@ -302,7 +266,6 @@ export default function Navbar() {
                   </Link>
                 )}
                 
-                {/* SERVICES - hide only when on services page */}
                 {pathname !== '/dashboard/services' && (
                   <Link
                     href="/dashboard/services"
@@ -312,7 +275,6 @@ export default function Navbar() {
                   </Link>
                 )}
                 
-                {/* TRANSACTIONS - hide only when on transactions page */}
                 {pathname !== '/dashboard/transactions' && (
                   <Link
                     href="/dashboard/transactions"
@@ -324,7 +286,6 @@ export default function Navbar() {
               </>
             )}
             
-            {/* FAQs - always show, hide only when on policies page */}
             {pathname !== '/policies' && (
               <Link
                 href="/policies"
@@ -334,7 +295,6 @@ export default function Navbar() {
               </Link>
             )}
             
-            {/* HELP - always show, hide only when on help page */}
             {pathname !== '/help' && (
               <Link
                 href="/help"
@@ -347,175 +307,159 @@ export default function Navbar() {
 
           {/* Right section */}
           <div className="flex items-center gap-2 md:gap-3">
-            {/* Only show these if verified */}
-            {isVerified && (
-              <>
-                {/* Currency switcher - only for logged in users */}
-                {user && (
-                  <CurrencySwitcher />
-                )}
+            {user && isVerified && (
+              <CurrencySwitcher />
+            )}
 
-                {/* Announcement bell - only for logged in users */}
-                {user && (
-                  <div className="hidden sm:block">
-                    <AnnouncementBell />
-                  </div>
-                )}
+            {user && isVerified && (
+              <AnnouncementBell />
+            )}
 
-                {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+              aria-label="Toggle theme"
+              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {isDark ? <FiSun className="text-lg text-yellow-400" /> : <FiMoon className="text-lg text-blue-500" />}
+            </button>
+
+            {user ? (
+              <div className="relative">
                 <button
-                  onClick={toggleTheme}
-                  className="p-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                  aria-label="Toggle theme"
-                  title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
                 >
-                  {isDark ? <FiSun className="text-lg text-yellow-400" /> : <FiMoon className="text-lg text-blue-500" />}
-                </button>
-
-                {/* Auth buttons */}
-                {user ? (
-                  <div className="relative">
-                    <button
-                      onClick={() => setDropdownOpen(!dropdownOpen)}
-                      className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                    >
-                      <div className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-primary-500/30">
-                        {userProfile?.photoURL ? (
-                          <img
-                            src={userProfile.photoURL}
-                            alt={userProfile.displayName || 'User'}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.onerror = null;
-                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.displayName || user.email || 'User')}&size=100&background=random`;
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full gradient-bg flex items-center justify-center text-white text-xs font-bold">
-                            {userProfile?.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
-                          </div>
-                        )}
+                  <div className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-primary-500/30">
+                    {userProfile?.photoURL ? (
+                      <img
+                        src={userProfile.photoURL}
+                        alt={userProfile.displayName || 'User'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.displayName || user.email || 'User')}&size=100&background=random`;
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full gradient-bg flex items-center justify-center text-white text-xs font-bold">
+                        {userProfile?.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
                       </div>
-                      {isAdmin && (
-                        <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">Admin</span>
-                      )}
-                    </button>
-
-                    {dropdownOpen && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => setDropdownOpen(false)}
-                        />
-                        <div className="absolute right-0 mt-2 w-64 glass-card rounded-2xl shadow-2xl border border-dark-200 dark:border-dark-700 z-20 animate-slide-down max-h-[85vh] overflow-y-auto flex flex-col">
-                          {/* Close button for mobile - Always on top */}
-                          <div className="sticky top-0 z-30 bg-white dark:bg-dark-900 rounded-t-2xl px-2 py-2 border-b border-dark-200 dark:border-dark-700 flex justify-end">
-                            <button
-                              onClick={() => setDropdownOpen(false)}
-                              className="p-2 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all shadow-sm"
-                              aria-label="Close menu"
-                            >
-                              <FiX className="text-lg text-dark-600 dark:text-dark-300" />
-                            </button>
-                          </div>
-                          
-                          {/* User Info */}
-                          <div className="px-4 py-3 border-b border-dark-200 dark:border-dark-700 flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-full overflow-hidden ring-2 ring-primary-500/30 flex-shrink-0">
-                              {userProfile?.photoURL ? (
-                                <img
-                                  src={userProfile.photoURL}
-                                  alt={userProfile.displayName || 'User'}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    e.target.onerror = null;
-                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.displayName || user.email || 'User')}&size=100&background=random`;
-                                  }}
-                                />
-                              ) : (
-                                <div className="w-full h-full gradient-bg flex items-center justify-center text-white text-lg font-bold">
-                                  {userProfile?.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm truncate">
-                                {userProfile?.displayName || 'User'}
-                              </p>
-                              <p className="text-xs text-dark-500 truncate">{user.email}</p>
-                            </div>
-                          </div>
-                          
-                          {/* Menu Items - Scrollable */}
-                          <div className="py-2 px-2 flex-1 overflow-y-auto">
-                            <Link
-                              href="/dashboard"
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                              onClick={() => setDropdownOpen(false)}
-                            >
-                              <FiUser className="text-dark-400" />
-                              Dashboard
-                            </Link>
-                            <Link
-                              href="/dashboard/orders"
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                              onClick={() => setDropdownOpen(false)}
-                            >
-                              <FiPackage className="text-dark-400" />
-                              My Orders
-                            </Link>
-                            <Link
-                              href="/dashboard/api"
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                              onClick={() => setDropdownOpen(false)}
-                            >
-                              <FiCode className="text-dark-400" />
-                              API
-                            </Link>
-                            <Link
-                              href="/dashboard/settings"
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                              onClick={() => setDropdownOpen(false)}
-                            >
-                              <FiSettings className="text-dark-400" />
-                              Settings
-                            </Link>
-                          </div>
-                          
-                          {/* Logout Button - Sticky at bottom */}
-                          <div className="sticky bottom-0 bg-white dark:bg-dark-900 border-t border-dark-200 dark:border-dark-700 p-2 rounded-b-2xl">
-                            <button
-                              onClick={handleLogout}
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 w-full transition-all"
-                            >
-                              <FiLogOut />
-                              Logout
-                            </button>
-                          </div>
-                        </div>
-                      </>
                     )}
                   </div>
-                ) : !pathname.startsWith('/admin') ? (
-                  <div className="hidden md:flex items-center gap-2">
-                    <Link href="/auth/login" className="btn-secondary btn-xs md:btn-sm">
-                      Login
-                    </Link>
-                    <Link href="/auth/register" className="btn-primary btn-xs md:btn-sm">
-                      Register
-                    </Link>
-                  </div>
-                ) : null}
-
-                {/* Mobile menu button */}
-                <button
-                  onClick={() => setIsOpen(!isOpen)}
-                  className="md:hidden p-1.5 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                >
-                  {isOpen ? <FiX className="text-base" /> : <FiMenu className="text-base" />}
+                  {isAdmin && (
+                    <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">Admin</span>
+                  )}
                 </button>
-              </>
-            )}
+
+                {dropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setDropdownOpen(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-64 glass-card rounded-2xl shadow-2xl border border-dark-200 dark:border-dark-700 z-20 animate-slide-down max-h-[85vh] overflow-y-auto flex flex-col">
+                      <div className="sticky top-0 z-30 bg-white dark:bg-dark-900 rounded-t-2xl px-2 py-2 border-b border-dark-200 dark:border-dark-700 flex justify-end">
+                        <button
+                          onClick={() => setDropdownOpen(false)}
+                          className="p-2 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all shadow-sm"
+                          aria-label="Close menu"
+                        >
+                          <FiX className="text-lg text-dark-600 dark:text-dark-300" />
+                        </button>
+                      </div>
+                      
+                      <div className="px-4 py-3 border-b border-dark-200 dark:border-dark-700 flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full overflow-hidden ring-2 ring-primary-500/30 flex-shrink-0">
+                          {userProfile?.photoURL ? (
+                            <img
+                              src={userProfile.photoURL}
+                              alt={userProfile.displayName || 'User'}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.displayName || user.email || 'User')}&size=100&background=random`;
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full gradient-bg flex items-center justify-center text-white text-lg font-bold">
+                              {userProfile?.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">
+                            {userProfile?.displayName || 'User'}
+                          </p>
+                          <p className="text-xs text-dark-500 truncate">{user.email}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="py-2 px-2 flex-1 overflow-y-auto">
+                        <Link
+                          href="/dashboard"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          <FiUser className="text-dark-400" />
+                          Dashboard
+                        </Link>
+                        <Link
+                          href="/dashboard/orders"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          <FiPackage className="text-dark-400" />
+                          My Orders
+                        </Link>
+                        <Link
+                          href="/dashboard/api"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          <FiCode className="text-dark-400" />
+                          API
+                        </Link>
+                        <Link
+                          href="/dashboard/settings"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          <FiSettings className="text-dark-400" />
+                          Settings
+                        </Link>
+                      </div>
+                      
+                      <div className="sticky bottom-0 bg-white dark:bg-dark-900 border-t border-dark-200 dark:border-dark-700 p-2 rounded-b-2xl">
+                        <button
+                          onClick={handleLogout}
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 w-full transition-all"
+                        >
+                          <FiLogOut />
+                          Logout
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : !pathname.startsWith('/admin') ? (
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/auth/login" className="btn-secondary btn-xs md:btn-sm">
+                  Login
+                </Link>
+                <Link href="/auth/register" className="btn-primary btn-xs md:btn-sm">
+                  Register
+                </Link>
+              </div>
+            ) : null}
+
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="md:hidden p-1.5 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+            >
+              {isOpen ? <FiX className="text-base" /> : <FiMenu className="text-base" />}
+            </button>
           </div>
         </div>
       </div>
@@ -524,7 +468,6 @@ export default function Navbar() {
       {isOpen && (
         <div className="md:hidden glass border-t border-dark-200/50 dark:border-dark-700/50 animate-slide-down">
           <div className="px-4 py-4 space-y-2">
-            {/* All main links - always visible */}
             <Link
               href="/"
               className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
