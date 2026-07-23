@@ -218,7 +218,7 @@ function CategoryGrid({ platform, categories, onSelect, expandedId }) {
 
           {/* Maintenance badge */}
           {cat.maintenance && (
-            <span className="relative z-10 text-[11px] font-bold px-3 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide animate-pulse">
+            <span className="relative z-10 text-[9px] sm:text-[11px] font-bold px-2 sm:px-3 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide animate-pulse whitespace-nowrap">
               🔧 Maintenance
             </span>
           )}
@@ -266,48 +266,48 @@ function ServicesList({ platform, category, services, onBack, selectedService, o
           <p className="text-dark-400 text-sm">No services have been added for {platform.name} → {category.name} yet.</p>
         </div>
       ) : (
-        <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+        <div className="space-y-2 sm:space-y-3 max-h-[520px] overflow-y-auto pr-1">
           {categoryServices.map((service) => (
             <div
               key={service.id}
               onClick={() => onServiceSelect(service)}
-              className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+              className={`p-3 sm:p-4 rounded-xl border-2 cursor-pointer transition-all ${
                 selectedService?.id === service.id
                   ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10 shadow-md shadow-primary-500/20'
                   : 'border-dark-200 dark:border-dark-700 hover:border-primary-400 dark:hover:border-primary-600 bg-dark-50 dark:bg-dark-800/50 hover:shadow-md'
               }`}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
                   {service.serviceId && (
-                    <span className="text-sm font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs sm:text-sm font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0">
                       {service.serviceId}
                     </span>
                   )}
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-dark-900 dark:text-white text-sm leading-tight mb-1 flex items-center gap-2 flex-wrap">
-                      <span>{service.name}</span>
+                    <h3 className="font-semibold text-dark-900 dark:text-white text-xs sm:text-sm leading-tight mb-1 flex items-center gap-2 flex-wrap">
+                      <span className="break-words">{service.name}</span>
                       {service.maintenance && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md shadow-orange-500/30 uppercase">🔧 Maintenance</span>
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md shadow-orange-500/30 uppercase whitespace-nowrap">🔧 Maintenance</span>
                       )}
                     </h3>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-[10px] sm:text-xs">
                       <span className="text-dark-500">Min: <span className="font-semibold text-dark-700 dark:text-dark-300">{parseInt(service.minQuantity || 0).toLocaleString()}</span></span>
                       <span className="text-dark-400">|</span>
                       <span className="text-dark-500">Max: <span className="font-semibold text-dark-700 dark:text-dark-300">{parseInt(service.maxQuantity || 0).toLocaleString()}</span></span>
                       {(service.avgTime || service.averageTime) && (
                         <><span className="text-dark-400">|</span><span className="text-dark-500">⏱ {service.avgTime || service.averageTime}</span></>
                       )}
-                      {service.refillSupported && <span className="text-green-500 font-medium bg-green-500/10 px-1.5 py-0.5 rounded">↩ Refill</span>}
-                      {service.cancelSupported && <span className="text-blue-500 font-medium bg-blue-500/10 px-1.5 py-0.5 rounded">✕ Cancel</span>}
+                      {service.refillSupported && <span className="text-[9px] sm:text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded whitespace-nowrap">↩ Refill</span>}
+                      {service.cancelSupported && <span className="text-[9px] sm:text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded whitespace-nowrap">✕ Cancel</span>}
                     </div>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-base font-bold text-primary-600 dark:text-primary-400">
+                <div className="text-right sm:text-right flex-shrink-0 self-start">
+                  <p className="text-sm sm:text-base font-bold text-primary-600 dark:text-primary-400">
                     {format(parseFloat(service.price || 0))}
                   </p>
-                  <p className="text-xs text-dark-400">{service.priceUnit || 'per 1000'}</p>
+                  <p className="text-[10px] sm:text-xs text-dark-400">{service.priceUnit || 'per 1000'}</p>
                 </div>
               </div>
             </div>

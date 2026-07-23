@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
-import { FiMenu, FiX, FiShoppingCart, FiUser, FiLogOut, FiSun, FiMoon, FiPackage, FiSettings, FiCode, FiGift, FiCreditCard } from 'react-icons/fi';
+import { FiMenu, FiX, FiUser, FiLogOut, FiSun, FiMoon, FiPackage, FiSettings, FiCode } from 'react-icons/fi';
 import { logout } from '@/firebase/auth';
 import { getCategories, db } from '@/firebase/firestore';
 import { doc, getDoc } from 'firebase/firestore';
@@ -61,15 +61,11 @@ export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [categories, setCategories] = useState([]);
   const [isVerified, setIsVerified] = useState(false);
   const [isApp2FAVerified, setIsApp2FAVerified] = useState(false);
   const [siteLogo, setSiteLogo] = useState(''); // NEW: Site logo state
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const activeCategoryId = searchParams.get('categoryId');
   const { user, userProfile, isAdmin } = useAuth();
-  const { cartCount } = useCart();
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -82,8 +78,7 @@ export default function Navbar() {
     if (dark) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
 
-    // Fetch categories and site logo
-    fetchCategories();
+    // Fetch site logo
     fetchSiteLogo();
 
     return () => window.removeEventListener('scroll', handleScroll);
@@ -177,13 +172,6 @@ export default function Navbar() {
       clearInterval(interval);
     };
   }, [pathname]);
-
-  const fetchCategories = async () => {
-    const { data, error } = await getCategories();
-    if (!error && data) {
-      setCategories(data);
-    }
-  };
 
   // Fetch site logo from Firestore
   const fetchSiteLogo = async () => {
@@ -423,7 +411,16 @@ export default function Navbar() {
                           className="fixed inset-0 z-10"
                           onClick={() => setDropdownOpen(false)}
                         />
-                        <div className="absolute right-0 mt-2 w-64 glass-card p-2 z-20 animate-slide-down">
+                        <div className="absolute right-0 mt-2 w-64 glass-card p-2 z-20 animate-slide-down max-h-[80vh] overflow-y-auto">
+                          {/* Close button for mobile */}
+                          <button
+                            onClick={() => setDropdownOpen(false)}
+                            className="md:hidden absolute top-2 right-2 p-1.5 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all z-10"
+                            aria-label="Close menu"
+                          >
+                            <FiX className="text-lg" />
+                          </button>
+                          
                           <div className="px-4 py-3 border-b border-dark-200 dark:border-dark-700 flex items-center gap-3">
                             <div className="w-12 h-12 rounded-full overflow-hidden ring-2 ring-primary-500/30 flex-shrink-0">
                               {userProfile?.photoURL ? (

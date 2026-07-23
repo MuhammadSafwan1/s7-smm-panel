@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useCurrency } from '@/context/CurrencyContext';
-import { FiChevronDown, FiRefreshCw } from 'react-icons/fi';
+import { FiChevronDown, FiRefreshCw, FiX } from 'react-icons/fi';
 
 export default function CurrencySwitcher() {
   const { currency, setCurrency, currencies, currentCurrency, loading, fetchRates } = useCurrency();
@@ -36,11 +36,20 @@ export default function CurrencySwitcher() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-dark-900 rounded-2xl shadow-2xl border border-dark-200 dark:border-dark-700 z-50 overflow-hidden animate-slide-down">
-            <div className="px-3 py-2.5 border-b border-dark-100 dark:border-dark-800">
+          <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-dark-900 rounded-2xl shadow-2xl border border-dark-200 dark:border-dark-700 z-50 overflow-hidden animate-slide-down max-h-[80vh] flex flex-col">
+            {/* Header with close button */}
+            <div className="px-3 py-2.5 border-b border-dark-100 dark:border-dark-800 flex items-center justify-between">
               <p className="text-xs font-bold text-dark-500 uppercase tracking-wider">Select Currency</p>
+              <button
+                onClick={() => setOpen(false)}
+                className="md:hidden p-1 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all"
+                aria-label="Close"
+              >
+                <FiX className="text-sm" />
+              </button>
             </div>
-            <div className="py-1 max-h-72 overflow-y-auto">
+            {/* Scrollable currency list */}
+            <div className="py-1 overflow-y-auto flex-1">
               {currencies.map(cur => (
                 <button
                   key={cur.code}
@@ -63,7 +72,8 @@ export default function CurrencySwitcher() {
                 </button>
               ))}
             </div>
-            <div className="px-3 py-2 border-t border-dark-100 dark:border-dark-800">
+            {/* Footer - sticky at bottom */}
+            <div className="px-3 py-2 border-t border-dark-100 dark:border-dark-800 bg-white dark:bg-dark-900">
               <button
                 onClick={() => { fetchRates(); }}
                 className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-dark-400 hover:text-primary-500 transition-colors"
