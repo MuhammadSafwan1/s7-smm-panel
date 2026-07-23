@@ -2,15 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { useCart } from '@/context/CartContext';
 import { FiMenu, FiX, FiUser, FiLogOut, FiSun, FiMoon, FiPackage, FiSettings, FiCode } from 'react-icons/fi';
 import { logout } from '@/firebase/auth';
-import { getCategories, db } from '@/firebase/firestore';
+import { db } from '@/firebase/firestore';
 import { doc, getDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import Image from 'next/image';
 import CurrencySwitcher from './CurrencySwitcher';
 import AnnouncementBell from './AnnouncementBell';
 
