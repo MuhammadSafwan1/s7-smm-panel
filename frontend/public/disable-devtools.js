@@ -1,52 +1,19 @@
-// Disable F12, Right Click, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U
+// DevTools detection - static file (runs before React)
 (function() {
-  // Disable right click
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
+  'use strict';
 
-  // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U, Ctrl+S
-  document.addEventListener('keydown', (e) => {
-    // F12
-    if (e.keyCode === 123) {
-      e.preventDefault();
-      return false;
-    }
-    // Ctrl+Shift+I
-    if (e.ctrlKey && e.shiftKey && e.keyCode === 73) {
-      e.preventDefault();
-      return false;
-    }
-    // Ctrl+Shift+J
-    if (e.ctrlKey && e.shiftKey && e.keyCode === 74) {
-      e.preventDefault();
-      return false;
-    }
-    // Ctrl+U
-    if (e.ctrlKey && e.keyCode === 85) {
-      e.preventDefault();
-      return false;
-    }
-    // Ctrl+S
-    if (e.ctrlKey && e.keyCode === 83) {
-      e.preventDefault();
-      return false;
-    }
-    // Ctrl+Shift+C
-    if (e.ctrlKey && e.shiftKey && e.keyCode === 67) {
-      e.preventDefault();
-      return false;
-    }
-  });
+  function showError() {
+    document.documentElement.innerHTML = '<head><title>Error</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.err{text-align:center;max-width:600px;padding:40px}.tag{display:inline-block;padding:6px 16px;background:#f0f0f0;border:1px solid #ccc;border-radius:4px;margin-bottom:24px;font-size:13px;color:#333;font-family:Menlo,Consolas,monospace}h1{font-size:16px;font-weight:normal;color:#333;margin:0 0 12px;line-height:1.5}p{font-size:13px;color:#666;margin:0 0 8px}button{padding:10px 24px;font-size:14px;background:#000;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:500}</style></head><body><div class="err"><div class="tag">Application error: a client-side exception has occurred (see the browser console for more information).</div><h1>This application is loading. Please wait a moment.</h1><p>If you see this message persist after the page has fully loaded, disable your browser extensions and hard refresh.</p><p>Developer Tools are not allowed on this site. Please close them and refresh.</p><br><button onclick="location.reload()">Refresh</button></div></body>';
+  }
 
   // Detect DevTools
-  const devtools = /./;
-  devtools.toString = function() {
-    this.opened = true;
-  };
-  
-  const checkDevTools = setInterval(() => {
-    if (devtools.opened) {
-      window.location.href = 'about:blank';
+  setInterval(function() {
+    var threshold = 160;
+    var w = window.outerWidth - window.innerWidth > threshold;
+    var h = window.outerHeight - window.innerHeight > threshold;
+    if (w || h) {
+      showError();
     }
-    devtools.opened = false;
-  }, 1000);
+  }, 500);
+
 })();

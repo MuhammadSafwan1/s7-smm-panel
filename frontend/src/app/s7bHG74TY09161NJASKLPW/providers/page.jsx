@@ -21,6 +21,16 @@ export default function ProvidersPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingProvider, setEditingProvider] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showServicesListModal, setShowServicesListModal] = useState(false);
+  const [fetchedServices, setFetchedServices] = useState([]);
+  const [fetchingServices, setFetchingServices] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [selectedServices, setSelectedServices] = useState([]);
+  const [importingServices, setImportingServices] = useState(false);
+  const [platforms, setPlatforms] = useState([]);
+  const [categories, setCategories] = useState([]);
+
+  const PROXY = 'https://smm-proxy.ms8347750.workers.dev';
 
   const [formData, setFormData] = useState({
     name: '',
@@ -35,7 +45,21 @@ export default function ProvidersPage() {
 
   useEffect(() => {
     fetchProviders();
+    fetchPlatformsAndCategories();
   }, []);
+
+  const fetchPlatformsAndCategories = async () => {
+    try {
+      const [platformsSnap, categoriesSnap] = await Promise.all([
+        getDocs(collection(db, 'platforms')),
+        getDocs(collection(db, 'categories')),
+      ]);
+      setPlatforms(platformsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCategories(categoriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error('Failed to load platforms/categories:', error);
+    }
+  };
 
   const fetchProviders = async () => {
     try {
@@ -189,6 +213,171 @@ export default function ProvidersPage() {
     setShowModal(false);
     resetForm();
   };
+
+  const fetchServicesFromProvider = async (provider) => {
+    setSelectedProvider(provider);
+    setFetchingServices(true);
+    setShowServicesListModal(true);
+    setFetchedServices([]);
+    setSelectedServices([]);
+
+    try {
+      const response = await fetch(PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiUrl: provider.apiUrl,
+          apiKey: provider.apiKey,
+          action: 'services',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      console.log('Services API Response:', result);
+
+      // Check if response is successful
+      if (result.success === false) {
+        throw new Error(result.error || result.message || 'API returned error');
+      }
+
+      let servicesList = [];
+
+      // Parse different response formats
+      if (Array.isArray(result)) {
+        servicesList = result;
+      } else if (Array.isArray(result.data)) {
+        servicesList = result.data;
+      } else if (result.services && Array.isArray(result.services)) {
+        servicesList = result.services;
+      } else {
+        throw new Error('No services data found. Response: ' + JSON.stringify(result).substring(0, 200));
+      }
+
+      if (servicesList.length === 0) {
+        toast.info(`No services found from ${provider.name}`);
+      } else {
+        setFetchedServices(servicesList);
+        toast.success(`Found ${servicesList.length} services from ${provider.name}`);
+      }
+    } catch (error) {
+      console.error('Fetch services error:', error);
+      toast.error(`Failed to fetch services: ${error.message}`);
+      setShowServicesListModal(false);
+    } finally {
+      setFetchingServices(false);
+    }
+  };
+
+  const handleSelectService = (serviceId) => {
+    setSelectedServices(prev => {
+      if (prev.includes(serviceId)) {
+        return prev.filter(id => id !== serviceId);
+      } else {
+        return [...prev, serviceId];
+      }
+    });
+  };
+
+  const handleSelectAllServices = () => {
+    if (selectedServices.length === fetchedServices.length) {
+      setSelectedServices([]);
+    } else {
+      setSelectedServices(fetchedServices.map(s => s.service));
+    }
+  };
+
+  const handleImportServices = async () => {
+    if (selectedServices.length === 0) {
+      toast.error('Please select at least one service to import');
+      return;
+    }
+
+    if (platforms.length === 0 || categories.length === 0) {
+      toast.error('Please create platforms and categories first before importing services');
+      return;
+    }
+
+    setImportingServices(true);
+
+    try {
+      const servicesToImport = fetchedServices.filter(s => selectedServices.includes(s.service));
+      
+      // Get highest existing service ID
+      const existingServicesSnap = await getDocs(collection(db, 'services'));
+      const existingServiceIds = existingServicesSnap.docs.map(d => parseInt(d.data().serviceId) || 0);
+      let nextServiceId = existingServiceIds.length > 0 ? Math.max(...existingServiceIds) + 1 : 1;
+
+      let imported = 0;
+      let skipped = 0;
+
+      for (const svc of servicesToImport) {
+        try {
+          // Check if service already exists from this provider
+          const existingService = existingServicesSnap.docs.find(d => 
+            d.data().providerId === selectedProvider.id && 
+            d.data().providerServiceId === String(svc.service)
+          );
+
+          if (existingService) {
+            skipped++;
+            continue;
+          }
+
+          // Create service document
+          const serviceData = {
+            serviceId: String(nextServiceId),
+            name: svc.name || `Service ${svc.service}`,
+            providerId: selectedProvider.id,
+            providerServiceId: String(svc.service),
+            price: parseFloat(svc.rate || 0) * 278.5, // Convert USD to PKR
+            minQuantity: parseInt(svc.min || 100),
+            maxQuantity: parseInt(svc.max || 100000),
+            avgTime: '1-6 Hours',
+            description: svc.description || '',
+            platformId: platforms[0]?.id || '', // Default to first platform
+            categoryId: categories[0]?.id || '', // Default to first category
+            customCommentsRequired: false,
+            isActive: true,
+            isFeatured: false,
+            isPopular: false,
+            refillSupported: svc.refill === true || svc.refill === 'true' || svc.refill === '1',
+            cancelSupported: svc.cancel === true || svc.cancel === 'true' || svc.cancel === '1',
+            refundSupported: false,
+            maintenance: false,
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+          };
+
+          await addDoc(collection(db, 'services'), serviceData);
+          imported++;
+          nextServiceId++;
+        } catch (err) {
+          console.error(`Failed to import service ${svc.service}:`, err);
+        }
+      }
+
+      toast.success(
+        `✅ Import Complete!\n` +
+        `✓ Imported: ${imported} services\n` +
+        `${skipped > 0 ? `⊘ Skipped: ${skipped} (already exist)` : ''}`,
+        { duration: 5000 }
+      );
+
+      setShowServicesListModal(false);
+      setSelectedServices([]);
+      fetchProviders();
+    } catch (error) {
+      console.error('Import error:', error);
+      toast.error(`Failed to import services: ${error.message}`);
+    } finally {
+      setImportingServices(false);
+    }
+  };
   return (
     <div>
       {/* Header */}
@@ -291,10 +480,11 @@ export default function ProvidersPage() {
               {/* Actions */}
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => toggleActive(provider)}
-                  className={`btn-sm ${provider.isActive ? 'btn-secondary' : 'btn-primary'}`}
+                  onClick={() => fetchServicesFromProvider(provider)}
+                  className="btn-primary btn-sm flex items-center justify-center gap-1 text-xs"
+                  title="Fetch & import services from this provider"
                 >
-                  {provider.isActive ? 'Deactivate' : 'Activate'}
+                  <FiGlobe className="text-sm" /> Fetch & Import
                 </button>
                 
                 <button
@@ -304,6 +494,14 @@ export default function ProvidersPage() {
                   <FiEdit2 /> Edit
                 </button>
               </div>
+
+              {/* Toggle Status */}
+              <button
+                onClick={() => toggleActive(provider)}
+                className={`w-full mt-2 btn-sm ${provider.isActive ? 'btn-secondary' : 'btn-primary'}`}
+              >
+                {provider.isActive ? 'Deactivate' : 'Activate'}
+              </button>
 
               {/* Delete */}
               <button
@@ -427,6 +625,177 @@ export default function ProvidersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Fetched Services List Modal with Import */}
+      {showServicesListModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-2xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-dark-200 dark:border-dark-700 flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold text-dark-900 dark:text-white">
+                  Import Services from {selectedProvider?.name}
+                </h3>
+                <p className="text-sm text-dark-500 mt-1">
+                  {fetchingServices ? 'Loading...' : `${selectedServices.length} of ${fetchedServices.length} selected`}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowServicesListModal(false)}
+                className="text-2xl text-dark-400 hover:text-dark-600"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {fetchingServices ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Spinner size="lg" />
+                  <p className="text-dark-500 mt-4">Fetching services from {selectedProvider?.name}...</p>
+                </div>
+              ) : fetchedServices.length === 0 ? (
+                <div className="text-center py-12">
+                  <FiGlobe className="text-5xl text-dark-300 mx-auto mb-4" />
+                  <p className="text-dark-500">No services found</p>
+                </div>
+              ) : (
+                <>
+                  {/* Select All Checkbox */}
+                  <div className="mb-4 flex items-center gap-3 p-4 bg-primary-50 dark:bg-primary-900/20 rounded-xl border-2 border-primary-200 dark:border-primary-800">
+                    <input
+                      type="checkbox"
+                      id="selectAll"
+                      checked={selectedServices.length === fetchedServices.length && fetchedServices.length > 0}
+                      onChange={handleSelectAllServices}
+                      className="w-5 h-5 rounded border-2 border-primary-400 text-primary-600 focus:ring-2 focus:ring-primary-500 cursor-pointer"
+                    />
+                    <label htmlFor="selectAll" className="text-sm font-semibold text-dark-900 dark:text-white cursor-pointer">
+                      Select All Services ({fetchedServices.length})
+                    </label>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-dark-100 dark:bg-dark-800 border-b border-dark-200 dark:border-dark-700 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase w-12">Select</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase">Service ID</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase">Service Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase">Category</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase">Rate (USD)</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase">Min/Max</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase">Features</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-dark-200 dark:divide-dark-700">
+                        {fetchedServices.map((service, index) => (
+                          <tr 
+                            key={index} 
+                            className={`hover:bg-dark-50 dark:hover:bg-dark-800/50 transition-colors cursor-pointer ${selectedServices.includes(service.service) ? 'bg-primary-50 dark:bg-primary-900/10' : ''}`}
+                            onClick={() => handleSelectService(service.service)}
+                          >
+                            <td className="px-4 py-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedServices.includes(service.service)}
+                                onChange={() => handleSelectService(service.service)}
+                                className="w-4 h-4 rounded border-2 border-dark-300 text-primary-600 focus:ring-2 focus:ring-primary-500 cursor-pointer"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-mono text-sm font-bold text-primary-600 dark:text-primary-400">
+                                {service.service}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm text-dark-900 dark:text-white">
+                                {service.name}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm text-dark-700 dark:text-dark-300">
+                                {service.category || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                                ${service.rate}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs text-dark-500">
+                                {service.min} - {service.max}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 text-xs">
+                                {(service.refill === true || service.refill === 'true' || service.refill === '1') && (
+                                  <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">
+                                    ↩ Refill
+                                  </span>
+                                )}
+                                {(service.cancel === true || service.cancel === 'true' || service.cancel === '1') && (
+                                  <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full">
+                                    ✕ Cancel
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            {!fetchingServices && fetchedServices.length > 0 && (
+              <div className="px-6 py-4 border-t border-dark-200 dark:border-dark-700 bg-dark-50 dark:bg-dark-800/50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-dark-900 dark:text-white">
+                      {selectedServices.length} service{selectedServices.length !== 1 ? 's' : ''} selected
+                    </p>
+                    <p className="text-xs text-dark-500 mt-0.5">
+                      💡 Services will be imported to first platform & category. You can edit them later.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShowServicesListModal(false)}
+                      className="btn-outline"
+                      disabled={importingServices}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleImportServices}
+                      disabled={selectedServices.length === 0 || importingServices}
+                      className="btn-primary flex items-center gap-2"
+                    >
+                      {importingServices ? (
+                        <>
+                          <Spinner size="sm" />
+                          Importing...
+                        </>
+                      ) : (
+                        <>
+                          <FiPlus /> Import {selectedServices.length} Service{selectedServices.length !== 1 ? 's' : ''}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

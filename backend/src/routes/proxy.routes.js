@@ -1,6 +1,66 @@
 const express = require('express');
 const axios = require('axios');
+const FormData = require('form-data');
 const router = express.Router();
+
+// POST /api/proxy/cloudinary
+// Upload image to Cloudinary via backend proxy
+router.post('/cloudinary', async (req, res) => {
+  try {
+    const { file, folder = 'site_logos' } = req.body;
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file provided'
+      });
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      return res.status(500).json({
+        success: false,
+        error: 'Cloudinary not configured on server'
+      });
+    }
+
+    // Create FormData
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', uploadPreset);
+    formData.append('folder', folder);
+
+    console.log('📤 Uploading to Cloudinary via proxy...');
+
+    const response = await axios.post(
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      formData,
+      {
+        headers: formData.getHeaders(),
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        timeout: 60000
+      }
+    );
+
+    console.log('✅ Cloudinary upload successful');
+
+    return res.json({
+      success: true,
+      url: response.data.secure_url,
+      data: response.data
+    });
+
+  } catch (err) {
+    console.error('❌ Cloudinary proxy error:', err.message);
+    return res.status(500).json({
+      success: false,
+      error: err.response?.data?.error?.message || err.message || 'Upload failed'
+    });
+  }
+});
 
 // POST /api/proxy/smm
 // Body: { apiUrl, apiKey, action, ...params }

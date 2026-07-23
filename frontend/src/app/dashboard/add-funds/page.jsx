@@ -6,7 +6,7 @@ import { db } from '@/firebase/firestore';
 import { collection, getDocs } from 'firebase/firestore';
 import { PageLoader } from '@/components/common/Loader';
 import Link from 'next/link';
-import { FiArrowLeft } from 'react-icons/fi';
+import { FiArrowLeft, FiCreditCard, FiDollarSign, FiClock, FiZap } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useCurrency } from '@/context/CurrencyContext';
 import { useRouter } from 'next/navigation';
@@ -42,44 +42,32 @@ export default function AddFundsPage() {
     }
   };
 
-  // Back button handler
   const handleBack = () => {
     router.push('/dashboard');
   };
 
-  // Convert amount from PKR to selected currency
   const convertFromPKR = (pkrAmount) => {
     if (!pkrAmount || isNaN(pkrAmount)) return 0;
-    
     if (currency === 'PKR') {
       return parseFloat(pkrAmount);
     }
-
-    // Convert PKR to USD first, then to target currency
     const usdAmount = pkrAmount / rates.PKR;
     const converted = usdAmount * rates[currency];
     return converted;
   };
 
-  // Format a single amount in the current currency
   const formatAmount = (pkrAmount) => {
     const converted = convertFromPKR(pkrAmount);
-    
-    // Get currency symbol
     const currencyObj = currencies.find(c => c.code === currency);
     const symbol = currencyObj?.symbol || currency;
-
-    // Format with proper decimals
     let decimals = 2;
     if (['PKR', 'BDT', 'INR', 'SAR', 'AED'].includes(currency)) {
       decimals = converted < 10 ? 4 : 0;
     }
-
     const formattedStr = converted.toLocaleString('en-US', {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
-
     return `${symbol}${formattedStr}`;
   };
 
@@ -88,7 +76,6 @@ export default function AddFundsPage() {
   };
 
   const handleMethodClick = (method) => {
-    // Navigate to payment details page with method ID
     router.push(`/dashboard/add-funds/payment?methodId=${method.id}`);
   };
 
@@ -96,9 +83,9 @@ export default function AddFundsPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-dark-50 dark:bg-dark-950/50 py-8 px-4">
+      <div className="min-h-screen py-8 px-4">
         <div className="text-center">
-          <p className="text-dark-500">Please log in to add funds</p>
+          <p className="text-dark-500 dark:text-dark-400">Please log in to add funds</p>
           <Link href="/auth/login" className="btn-primary mt-4">Login</Link>
         </div>
       </div>
@@ -107,15 +94,17 @@ export default function AddFundsPage() {
 
   if (paymentMethods.length === 0) {
     return (
-      <div className="min-h-screen bg-dark-50 dark:bg-dark-950/50 py-8 px-4">
+      <div className="min-h-screen py-8 px-4">
         <div className="max-w-2xl mx-auto">
-          <button onClick={handleBack} className="text-sm text-dark-500 hover:text-primary-500 flex items-center gap-1 mb-6 transition-colors">
+          <button onClick={handleBack} className="text-sm text-dark-500 dark:text-dark-400 hover:text-primary-500 dark:hover:text-primary-400 flex items-center gap-1 mb-6 transition-colors">
             <FiArrowLeft /> Back to Dashboard
           </button>
-          <div className="glass-card p-12 text-center">
-            <div className="text-5xl mb-4">💳</div>
-            <p className="text-dark-500 font-semibold text-lg">No Payment Methods Available</p>
-            <p className="text-dark-400 text-sm mt-1">Admin hasn't set up any payment methods yet</p>
+          <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-12 text-center border border-gray-100 dark:border-[#253a5e]">
+            <div className="w-20 h-20 rounded-2xl bg-blue-600 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-600/30">
+              <FiCreditCard className="text-white" size={32} />
+            </div>
+            <p className="text-gray-900 dark:text-white font-semibold text-lg">No Payment Methods Available</p>
+            <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Admin hasn't set up any payment methods yet</p>
           </div>
         </div>
       </div>
@@ -126,93 +115,87 @@ export default function AddFundsPage() {
   const autoMethods = paymentMethods.filter(m => m.paymentType === 'auto');
 
   return (
-    <div className="min-h-screen bg-dark-50 dark:bg-dark-950/50 py-8 px-4 sm:px-6">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen py-6 px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+      <div className="max-w-[1920px] mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
-          <button onClick={handleBack} className="p-2 hover:bg-dark-100 dark:hover:bg-dark-800 rounded-lg transition-colors" title="Back to Dashboard">
-            <FiArrowLeft className="text-lg text-dark-600 dark:text-dark-400" />
+          <button onClick={handleBack} className="flex items-center justify-center w-10 h-10 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72] transition-all" title="Back to Dashboard">
+            <FiArrowLeft size={18} />
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-dark-900 dark:text-white">Add Funds</h1>
-            <p className="text-dark-500 dark:text-dark-400 text-sm mt-1">Select a payment method to deposit money</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Add Funds</h1>
+            <p className="text-gray-400 dark:text-gray-500 text-sm mt-0.5">Select a payment method to deposit money</p>
           </div>
         </div>
 
         {/* Currency Info Banner */}
-        <div className="mb-8 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/30 rounded-2xl p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center text-2xl">
-              💱
-            </div>
-            <div className="flex-1">
-              <h4 className="font-bold text-dark-900 dark:text-white text-base mb-1">
-                Current Currency
-              </h4>
-              <p className="text-sm text-dark-600 dark:text-dark-300">
-                Viewing in <span className="font-bold text-blue-600 dark:text-blue-400">{currencies.find(c => c.code === currency)?.name} ({currency})</span>
-              </p>
-            </div>
+        <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] mb-8 flex items-center gap-4 hover:shadow-lg transition-all duration-300">
+          <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30">
+            <FiDollarSign className="text-white" size={20} />
+          </div>
+          <div className="flex-1">
+            <h4 className="font-bold text-gray-900 dark:text-white text-sm mb-0.5">Current Currency</h4>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Viewing in <span className="font-bold text-blue-600 dark:text-blue-400">{currencies.find(c => c.code === currency)?.name} ({currency})</span>
+            </p>
           </div>
         </div>
 
         {/* Manual Payments Section */}
         {manualMethods.length > 0 && (
           <div className="mb-10">
-            <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-l-4 border-yellow-500 rounded-xl p-5 mb-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center text-xl">
-                  📋
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-dark-900 dark:text-white">Manual Payment Methods</h2>
-                  <p className="text-sm text-dark-600 dark:text-dark-300">Admin will verify your payment within 24 hours</p>
-                </div>
+            <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] mb-6 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
+                <FiClock className="text-white" size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Manual Payment Methods</h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Admin will verify your payment within 15-20 minutes</p>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {manualMethods.map(method => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {manualMethods.map((method, index) => (
                 <button
                   key={method.id}
                   onClick={() => handleMethodClick(method)}
-                  className="group relative bg-white dark:bg-dark-800 rounded-2xl p-6 border-2 border-dark-200 dark:border-dark-700 hover:border-yellow-500 dark:hover:border-yellow-500 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
+                  className="group bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] hover:shadow-xl transition-all duration-300 hover:-translate-y-1 text-left"
+                  style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  {/* Image Container */}
                   {method.image && (
-                    <div className="relative mb-5 bg-gradient-to-br from-dark-50 to-dark-100 dark:from-dark-700 dark:to-dark-800 rounded-xl p-6 h-36 flex items-center justify-center overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-orange-500/5 group-hover:from-yellow-500/10 group-hover:to-orange-500/10 transition-colors"></div>
-                      <img src={method.image} alt={method.name} className="relative z-10 max-w-full max-h-full object-contain" />
+                    <div className="mb-4 bg-gray-50 dark:bg-[#253a5e]/50 rounded-xl p-4 h-28 flex items-center justify-center overflow-hidden">
+                      <img src={method.image} alt={method.name} className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-300" />
                     </div>
                   )}
                   
-                  {/* Content */}
                   <div className="space-y-3">
-                    <h3 className="font-bold text-dark-900 dark:text-white text-xl group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors">
+                    <h3 className="font-bold text-gray-900 dark:text-white text-base group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                       {method.name}
                     </h3>
                     
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-dark-500 dark:text-dark-400">Range:</span>
-                        <span className="font-bold text-dark-900 dark:text-white">
+                        <span className="text-gray-400 dark:text-gray-500">Range:</span>
+                        <span className="font-bold text-gray-900 dark:text-white text-xs">
                           {formatAmountRange(method.minAmount, method.maxAmount)}
                         </span>
                       </div>
                       
-                      {method.feePercent !== undefined && (
+                      {method.feePercent !== undefined && method.feePercent > 0 && (
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-dark-500 dark:text-dark-400">Fee:</span>
-                          <span className="font-bold text-amber-600 dark:text-amber-400">
-                            {method.feePercent}%
+                          <span className="text-gray-400 dark:text-gray-500">
+                            {method.chargeType === 'bonus' ? 'Bonus:' : 'Fee:'}
+                          </span>
+                          <span className={`font-bold text-xs ${method.chargeType === 'bonus' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                            {method.chargeType === 'bonus' ? '+' : ''}{method.feePercent}%
                           </span>
                         </div>
                       )}
                     </div>
                     
-                    <div className="pt-3 border-t border-dark-200 dark:border-dark-700">
-                      <span className="text-xs font-semibold text-yellow-600 dark:text-yellow-400 uppercase tracking-wide">
-                        Click to Continue →
+                    <div className="pt-3 border-t border-gray-100 dark:border-[#253a5e]">
+                      <span className="flex items-center justify-center gap-1 w-full py-2 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-md shadow-amber-500/20">
+                        Continue →
                       </span>
                     </div>
                   </div>
@@ -225,60 +208,58 @@ export default function AddFundsPage() {
         {/* Auto Payments Section */}
         {autoMethods.length > 0 && (
           <div>
-            <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-l-4 border-green-500 rounded-xl p-5 mb-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center text-xl">
-                  🔄
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-dark-900 dark:text-white">Instant Payment Methods</h2>
-                  <p className="text-sm text-dark-600 dark:text-dark-300">Funds added automatically after payment confirmation</p>
-                </div>
+            <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] mb-6 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/30">
+                <FiZap className="text-white" size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Instant Payment Methods</h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Funds added automatically after payment confirmation</p>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {autoMethods.map(method => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {autoMethods.map((method, index) => (
                 <button
                   key={method.id}
                   onClick={() => handleMethodClick(method)}
-                  className="group relative bg-white dark:bg-dark-800 rounded-2xl p-6 border-2 border-dark-200 dark:border-dark-700 hover:border-green-500 dark:hover:border-green-500 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
+                  className="group bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] hover:shadow-xl transition-all duration-300 hover:-translate-y-1 text-left"
+                  style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  {/* Image Container */}
                   {method.image && (
-                    <div className="relative mb-5 bg-gradient-to-br from-dark-50 to-dark-100 dark:from-dark-700 dark:to-dark-800 rounded-xl p-6 h-36 flex items-center justify-center overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-emerald-500/5 group-hover:from-green-500/10 group-hover:to-emerald-500/10 transition-colors"></div>
-                      <img src={method.image} alt={method.name} className="relative z-10 max-w-full max-h-full object-contain" />
+                    <div className="mb-4 bg-gray-50 dark:bg-[#253a5e]/50 rounded-xl p-4 h-28 flex items-center justify-center overflow-hidden">
+                      <img src={method.image} alt={method.name} className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-300" />
                     </div>
                   )}
                   
-                  {/* Content */}
                   <div className="space-y-3">
-                    <h3 className="font-bold text-dark-900 dark:text-white text-xl group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">
+                    <h3 className="font-bold text-gray-900 dark:text-white text-base group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">
                       {method.name}
                     </h3>
                     
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-dark-500 dark:text-dark-400">Range:</span>
-                        <span className="font-bold text-dark-900 dark:text-white">
+                        <span className="text-gray-400 dark:text-gray-500">Range:</span>
+                        <span className="font-bold text-gray-900 dark:text-white text-xs">
                           {formatAmountRange(method.minAmount, method.maxAmount)}
                         </span>
                       </div>
                       
-                      {method.feePercent !== undefined && (
+                      {method.feePercent !== undefined && method.feePercent > 0 && (
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-dark-500 dark:text-dark-400">Fee:</span>
-                          <span className="font-bold text-amber-600 dark:text-amber-400">
-                            {method.feePercent}%
+                          <span className="text-gray-400 dark:text-gray-500">
+                            {method.chargeType === 'bonus' ? 'Bonus:' : 'Fee:'}
+                          </span>
+                          <span className={`font-bold text-xs ${method.chargeType === 'bonus' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                            {method.chargeType === 'bonus' ? '+' : ''}{method.feePercent}%
                           </span>
                         </div>
                       )}
                     </div>
                     
-                    <div className="pt-3 border-t border-dark-200 dark:border-dark-700">
-                      <span className="text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide">
-                        Click to Continue →
+                    <div className="pt-3 border-t border-gray-100 dark:border-[#253a5e]">
+                      <span className="flex items-center justify-center gap-1 w-full py-2 rounded-lg text-xs font-bold bg-green-600 hover:bg-green-700 text-white transition-all shadow-md shadow-green-600/20">
+                        Continue →
                       </span>
                     </div>
                   </div>
@@ -290,7 +271,7 @@ export default function AddFundsPage() {
 
         {/* Transaction History Link */}
         <div className="mt-8 text-center">
-          <Link href="/dashboard/transactions" className="text-sm text-primary-500 hover:text-primary-600 font-medium">
+          <Link href="/dashboard/transactions" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#2f4a72] text-sm font-semibold transition-all">
             View Transaction History →
           </Link>
         </div>

@@ -54,7 +54,7 @@ function formatTime(ts) {
 
 function sevenDaysAgo() {
   const d = new Date();
-  d.setDate(d.getDate() - 7);
+  d.setDate(d.getDate() - 5); // Changed from 7 to 5 days
   return Timestamp.fromDate(d);
 }
 
@@ -103,12 +103,24 @@ export default function AdminSupportPage() {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [isDark, setIsDark] = useState(false);
 
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const unsubChatsRef = useRef(null);
   const unsubMsgsRef = useRef(null);
+
+  // Theme detection
+  useEffect(() => {
+    const checkTheme = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   // ── scroll to bottom ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -167,14 +179,14 @@ export default function AdminSupportPage() {
 
     unsubMsgsRef.current = onSnapshot(q, async (snap) => {
       const now = Date.now();
-      const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+      const FIVE_DAYS = 5 * 24 * 60 * 60 * 1000; // Changed from 7 to 5 days
       const toDelete = [];
       const valid = [];
 
       snap.docs.forEach((d) => {
         const data = d.data();
         const ts = data.createdAt?.toMillis?.() ?? now;
-        if (now - ts > SEVEN_DAYS) {
+        if (now - ts > FIVE_DAYS) { // Changed from SEVEN_DAYS to FIVE_DAYS
           toDelete.push(d.id);
         } else {
           valid.push({ id: d.id, ...data });
@@ -276,6 +288,7 @@ export default function AdminSupportPage() {
         chatId: selectedChatId,
         senderId: 'admin',
         isAdmin: true,
+        message: '',
         imageUrl: result.url,
         createdAt: Timestamp.now(),
         expiresAt,
@@ -337,8 +350,8 @@ export default function AdminSupportPage() {
       <div className="flex items-center gap-4 mb-4 flex-shrink-0">
         <div className="flex items-center gap-6 flex-1">
           <div className="glass-card px-4 py-2 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-              <FiUsers className="text-purple-400" size={16} />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)' }}>
+              <FiUsers className="text-white" size={16} />
             </div>
             <div>
               <p className="text-xs text-gray-400">Total</p>
@@ -346,8 +359,8 @@ export default function AdminSupportPage() {
             </div>
           </div>
           <div className="glass-card px-4 py-2 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
-              <FiMessageSquare className="text-green-400" size={16} />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #4169E1 0%, #6495ED 100%)' }}>
+              <FiMessageSquare className="text-white" size={16} />
             </div>
             <div>
               <p className="text-xs text-gray-400">Open</p>
@@ -355,8 +368,8 @@ export default function AdminSupportPage() {
             </div>
           </div>
           <div className="glass-card px-4 py-2 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-              <FiInbox className="text-blue-400" size={16} />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)' }}>
+              <FiInbox className="text-white" size={16} />
             </div>
             <div>
               <p className="text-xs text-gray-400">Unread</p>
@@ -374,7 +387,7 @@ export default function AdminSupportPage() {
       </div>
 
       {/* Two-panel layout */}
-      <div className="flex flex-1 min-h-0 gap-0 rounded-2xl overflow-hidden border border-white/5" style={{ background: '#0f0f1a' }}>
+      <div className="flex flex-1 min-h-0 gap-0 rounded-2xl overflow-hidden border border-white/5" style={{ background: isDark ? 'rgb(23, 23, 23)' : 'rgb(255, 255, 255)' }}>
         {/* ── LEFT: Chat list ── */}
         <div
           className="w-[300px] flex-shrink-0 flex flex-col border-r"
@@ -415,10 +428,15 @@ export default function AdminSupportPage() {
                   onClick={() => selectChat(chat.id)}
                   className={`w-full flex items-center gap-3 px-3 py-3 transition-colors text-left border-b ${
                     selectedChatId === chat.id
-                      ? 'bg-purple-600/20 border-purple-600/20'
+                      ? 'border-transparent'
                       : 'hover:bg-white/5 border-transparent'
                   }`}
-                  style={{ borderBottomColor: 'rgba(255,255,255,0.04)' }}
+                  style={selectedChatId === chat.id ? {
+                    background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%)',
+                    borderBottom: '1px solid rgba(124, 58, 237, 0.3)'
+                  } : {
+                    borderBottomColor: 'rgba(255,255,255,0.04)'
+                  }}
                 >
                   <Avatar name={chat.userName || chat.userEmail} size={10} />
                   <div className="flex-1 min-w-0">
@@ -454,13 +472,13 @@ export default function AdminSupportPage() {
             <div className="flex flex-col items-center justify-center flex-1 gap-4">
               <div
                 className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)' }}
               >
                 <FiMessageSquare size={30} className="text-white" />
               </div>
               <div className="text-center">
-                <p className="text-white font-semibold text-base">Select a conversation</p>
-                <p className="text-gray-500 text-sm mt-1">Choose from the left panel to start replying</p>
+                <p className={`font-semibold text-base ${isDark ? 'text-white' : 'text-gray-800'}`}>Select a conversation</p>
+                <p className={`text-sm mt-1 ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>Choose from the left panel to start replying</p>
               </div>
             </div>
           ) : (
@@ -468,7 +486,7 @@ export default function AdminSupportPage() {
               {/* Chat header */}
               <div
                 className="flex items-center justify-between px-4 py-3 flex-shrink-0 border-b"
-                style={{ borderColor: 'rgba(255,255,255,0.06)', background: '#13131f' }}
+                style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)' }}
               >
                 <div className="flex items-center gap-3">
                   <Avatar name={selectedChat?.userName || selectedChat?.userEmail} size={10} />
@@ -476,7 +494,7 @@ export default function AdminSupportPage() {
                     <p className="text-white font-semibold text-sm">
                       {selectedChat?.userName || 'User'}
                     </p>
-                    <p className="text-gray-500 text-xs">{selectedChat?.userEmail}</p>
+                    <p className="text-white/80 text-xs">{selectedChat?.userEmail}</p>
                   </div>
                   <span
                     className={`text-xs px-2 py-0.5 rounded-full font-medium ml-2 ${
@@ -491,7 +509,7 @@ export default function AdminSupportPage() {
                 {selectedChat?.status === 'open' && (
                   <button
                     onClick={() => closeConversation(selectedChatId)}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors border border-white/10"
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white hover:bg-white/20 transition-colors border border-white/30 bg-white/10"
                   >
                     <FiCheckCircle size={13} />
                     Close
@@ -500,14 +518,14 @@ export default function AdminSupportPage() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ background: '#0f0f1a' }}>
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ background: isDark ? 'rgb(23, 23, 23)' : 'rgb(255, 255, 255)' }}>
                 {msgsLoading ? (
                   <div className="flex items-center justify-center h-32">
                     <Spinner size="sm" />
                   </div>
                 ) : messages.length === 0 ? (
                   <div className="flex items-center justify-center h-32">
-                    <p className="text-gray-500 text-sm">No messages yet</p>
+                    <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>No messages yet</p>
                   </div>
                 ) : (
                   messages.map((msg) => {
@@ -518,7 +536,9 @@ export default function AdminSupportPage() {
                         className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                       >
                         {!isAdmin && (
-                          <span className="text-[10px] text-blue-400 font-medium ml-1 mb-0.5">
+                          <span className={`text-[10px] font-medium ml-1 mb-0.5 ${
+                            isDark ? 'text-primary-400' : 'text-primary-600'
+                          }`}>
                             {selectedChat?.userName || 'User'}
                           </span>
                         )}
@@ -531,12 +551,12 @@ export default function AdminSupportPage() {
                           style={
                             isAdmin
                               ? {
-                                  background:
-                                    'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                                  background: 'rgb(14, 110, 227)',
+                                  boxShadow: '0 4px 12px rgba(14, 110, 227, 0.25)',
                                 }
                               : {
-                                  background: '#1e1e2e',
-                                  border: '1px solid rgba(255,255,255,0.06)',
+                                  background: isDark ? '#1D4ED8' : '#DBEAFE',
+                                  color: isDark ? 'white' : '#1f2937',
                                 }
                           }
                         >
@@ -556,7 +576,9 @@ export default function AdminSupportPage() {
                           )}
                           {msg.message && <span>{msg.message}</span>}
                         </div>
-                        <span className="text-[10px] text-gray-500 mt-0.5 px-1">
+                        <span className={`text-[10px] mt-0.5 px-1 ${
+                          isDark ? 'text-gray-500' : 'text-gray-400'
+                        }`}>
                           {formatTime(msg.createdAt)}
                         </span>
                       </div>
@@ -566,16 +588,20 @@ export default function AdminSupportPage() {
 
                 {uploadProgress !== null && (
                   <div className="flex flex-col items-end gap-1">
-                    <div className="w-[60%] bg-gray-700 rounded-full h-1.5">
+                    <div className={`w-[60%] rounded-full h-1.5 ${
+                      isDark ? 'bg-gray-700' : 'bg-gray-300'
+                    }`}>
                       <div
                         className="h-1.5 rounded-full transition-all duration-200"
                         style={{
                           width: `${uploadProgress}%`,
-                          background: 'linear-gradient(90deg, #7c3aed, #a855f7)',
+                          background: 'rgb(14, 110, 227)',
                         }}
                       />
                     </div>
-                    <span className="text-[10px] text-gray-500">Uploading {uploadProgress}%</span>
+                    <span className={`text-[10px] ${
+                      isDark ? 'text-gray-500' : 'text-gray-400'
+                    }`}>Uploading {uploadProgress}%</span>
                   </div>
                 )}
 
@@ -585,12 +611,12 @@ export default function AdminSupportPage() {
               {/* Input bar */}
               <div
                 className="flex-shrink-0 px-4 py-3 border-t"
-                style={{ background: '#0f0f1a', borderColor: 'rgba(255,255,255,0.06)' }}
+                style={{ background: isDark ? '#0f1419' : '#f9fafb', borderColor: 'rgba(255,255,255,0.06)' }}
               >
                 <div
                   className="flex items-end gap-2 rounded-xl px-3 py-2"
                   style={{
-                    background: '#1e1e2e',
+                    background: isDark ? '#16213e' : '#e5e7eb',
                     border: '1px solid rgba(124,58,237,0.2)',
                   }}
                 >
@@ -619,7 +645,9 @@ export default function AdminSupportPage() {
                     onKeyDown={handleKeyDown}
                     placeholder="Reply as admin..."
                     rows={1}
-                    className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none resize-none leading-5"
+                    className={`flex-1 bg-transparent text-sm placeholder-gray-500 outline-none resize-none leading-5 ${
+                      isDark ? 'text-white' : 'text-gray-800'
+                    }`}
                     style={{ maxHeight: '80px' }}
                   />
 
@@ -631,8 +659,9 @@ export default function AdminSupportPage() {
                     className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-40"
                     style={{
                       background: text.trim()
-                        ? 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)'
-                        : '#2a2a3a',
+                        ? 'rgb(14, 110, 227)'
+                        : isDark ? '#1f2937' : '#9ca3af',
+                      boxShadow: text.trim() ? '0 4px 12px rgba(14, 110, 227, 0.3)' : 'none',
                     }}
                     aria-label="Send reply"
                   >

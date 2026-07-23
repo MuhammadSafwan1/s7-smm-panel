@@ -3,21 +3,38 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
-import { FiSave, FiImage, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiTool, FiUserCheck, FiX, FiPlus } from 'react-icons/fi';
+import { FiSave, FiImage, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiTool, FiUserCheck, FiX, FiPlus, FiMessageCircle, FiUpload, FiCheck, FiAlertTriangle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
+
+const PAGE_MAINTENANCE_KEYS = [
+  { key: 'dashboard', label: 'Dashboard', desc: 'Main ordering page', icon: '🏠' },
+  { key: 'addFunds', label: 'Add Funds', desc: 'Deposit & payment page', icon: '💰' },
+  { key: 'orders', label: 'My Orders', desc: 'Order history & tracking', icon: '📦' },
+  { key: 'services', label: 'Services', desc: 'Service browsing page', icon: '🛍️' },
+  { key: 'settings', label: 'Settings', desc: 'User profile settings', icon: '⚙️' },
+  { key: 'transactions', label: 'Transactions', desc: 'Deposit & withdrawal history', icon: '📜' },
+];
 
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoFile, setLogoFile] = useState(null);
   const [settings, setSettings] = useState({
     adminName: '',
     adminDescription: '',
     adminPhoto: '',
+    siteLogo: '',
     websiteLoginEnabled: true,
     maintenanceMode: false,
-    whitelistedEmails: [], // Array of emails that can access during maintenance
+    pageMaintenance: {},
+    whitelistedEmails: [],
+    whatsappChannelUrl: '',
+    whatsappChannelEnabled: false,
   });
   const [imagePreview, setImagePreview] = useState('');
+  const [logoPreview, setLogoPreview] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [allUsers, setAllUsers] = useState([]);
 
@@ -36,11 +53,16 @@ export default function AdminSettingsPage() {
           adminName: data.adminName || '',
           adminDescription: data.adminDescription || '',
           adminPhoto: data.adminPhoto || '',
+          siteLogo: data.siteLogo || '',
           websiteLoginEnabled: data.websiteLoginEnabled !== false,
           maintenanceMode: data.maintenanceMode || false,
+          pageMaintenance: data.pageMaintenance || {},
           whitelistedEmails: data.whitelistedEmails || [],
+          whatsappChannelUrl: data.whatsappChannelUrl || 'https://whatsapp.com/channel/0029Vb5txzUJkK714Q3onN1l',
+          whatsappChannelEnabled: data.whatsappChannelEnabled !== false,
         });
         setImagePreview(data.adminPhoto || '');
+        setLogoPreview(data.siteLogo || '');
       }
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -141,6 +163,81 @@ export default function AdminSettingsPage() {
     reader.readAsDataURL(file);
   };
 
+  const handleLogoFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Logo must be less than 5MB'); return; }
+    setLogoFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => { setLogoPreview(event.target.result); };
+    reader.readAsDataURL(file);
+  };
+
+  const handleLogoUploadCloudinary = async () => {
+    if (!logoFile) { toast.error('Select a logo file first'); return; }
+    setLogoUploading(true);
+    const uploadToast = toast.loading('Uploading to Cloudinary...');
+    try {
+      const result = await uploadToCloudinary(logoFile, 'website/logo', (progress) => {
+        toast.loading(`Uploading to Cloudinary... ${progress}%`, { id: uploadToast });
+      });
+      if (result.url) {
+        setLogoPreview(result.url);
+        setSettings(prev => ({ ...prev, siteLogo: result.url }));
+        setLogoFile(null);
+        toast.success('Logo uploaded via Cloudinary!', { id: uploadToast });
+      } else {
+        toast.error(result.error || 'Cloudinary upload failed', { id: uploadToast });
+      }
+    } catch (err) {
+      toast.error('Cloudinary upload error: ' + err.message, { id: uploadToast });
+    } finally { setLogoUploading(false); }
+  };
+
+  const handleLogoUploadFirebase = async () => {
+    if (!logoFile) { toast.error('Select a logo file first'); return; }
+    setLogoUploading(true);
+    const uploadToast = toast.loading('Uploading to Firebase...');
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve) => {
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxSize = 800;
+            let width = img.width, height = img.height;
+            if (width > height) { if (width > maxSize) { height *= maxSize / width; width = maxSize; } }
+            else { if (height > maxSize) { width *= maxSize / height; height = maxSize; } }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.9));
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(logoFile);
+      });
+      setLogoPreview(base64);
+      setSettings(prev => ({ ...prev, siteLogo: base64 }));
+      setLogoFile(null);
+      toast.success('Logo saved to Firebase!', { id: uploadToast });
+    } catch (err) {
+      toast.error('Firebase upload error: ' + err.message, { id: uploadToast });
+    } finally { setLogoUploading(false); }
+  };
+
+  const togglePageMaintenance = (pageKey) => {
+    setSettings(prev => ({
+      ...prev,
+      pageMaintenance: {
+        ...prev.pageMaintenance,
+        [pageKey]: !prev.pageMaintenance[pageKey],
+      }
+    }));
+  };
+
   const handleSave = async () => {
     if (!settings.adminName.trim()) {
       toast.error('Admin name is required');
@@ -194,10 +291,10 @@ export default function AdminSettingsPage() {
                     <img
                       src={imagePreview}
                       alt="Admin"
-                      className="w-32 h-32 rounded-2xl object-cover border-4 border-primary-500 shadow-lg"
+                      className="w-40 h-40 rounded-2xl object-cover border-[5px] border-primary-500 shadow-xl shadow-primary-500/30"
                     />
                   ) : (
-                    <div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white text-4xl font-bold shadow-lg">
+                    <div className="w-40 h-40 rounded-2xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white text-5xl font-bold shadow-xl shadow-primary-500/30">
                       {settings.adminName?.[0] || 'A'}
                     </div>
                   )}
@@ -212,7 +309,7 @@ export default function AdminSettingsPage() {
                       className="hidden"
                     />
                   </label>
-                  <p className="text-xs text-dark-500 mt-2">Max 2MB, recommended 400x400px</p>
+                  <p className="text-xs text-dark-500 mt-2">Max 2MB, recommended 500x500px</p>
                 </div>
               </div>
             </div>
@@ -247,6 +344,77 @@ export default function AdminSettingsPage() {
               <p className="text-xs text-dark-500 mt-1">
                 {settings.adminDescription.length}/500 characters
               </p>
+            </div>
+
+            {/* Website Logo Upload */}
+            <div className="p-4 rounded-xl bg-dark-50 dark:bg-dark-900 border border-dark-200 dark:border-dark-700">
+              <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-3">
+                Website Logo (HD)
+              </label>
+              <div className="flex items-center gap-6">
+                <div className="relative">
+                  {logoPreview ? (
+                    <img
+                      src={logoPreview}
+                      alt="Website Logo"
+                      className="h-24 max-w-[200px] rounded-xl object-contain border-2 border-primary-500 shadow-lg bg-white dark:bg-dark-800 p-2"
+                    />
+                  ) : (
+                    <div className="h-24 w-[200px] rounded-xl bg-dark-100 dark:bg-dark-700 border-2 border-dashed border-dark-300 dark:border-dark-600 flex items-center justify-center">
+                      <div className="text-center">
+                        <FiImage className="text-2xl text-dark-400 mx-auto mb-1" />
+                        <p className="text-[10px] text-dark-400">No logo</p>
+                      </div>
+                    </div>
+                  )}
+                  {logoUploading && (
+                    <div className="absolute inset-0 rounded-xl bg-black/50 flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="btn-primary cursor-pointer inline-flex items-center gap-2 text-sm">
+                      <FiImage /> Select Logo File
+                      <input type="file" accept="image/*" onChange={handleLogoFileSelect} className="hidden" />
+                    </label>
+                    <p className="text-[10px] text-dark-400 mt-1">Max 5MB, PNG/SVG recommended</p>
+                  </div>
+                  {logoPreview && logoFile && (
+                    <div className="flex gap-2">
+                      <button onClick={handleLogoUploadCloudinary} disabled={logoUploading}
+                        className="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1">
+                        {logoUploading ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" /> : <FiUpload />}
+                        Cloudinary
+                      </button>
+                      <button onClick={handleLogoUploadFirebase} disabled={logoUploading}
+                        className="flex-1 px-3 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1">
+                        {logoUploading ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" /> : <FiUpload />}
+                        Firebase
+                      </button>
+                    </div>
+                  )}
+                  {logoPreview && !logoFile && (
+                    <div className="flex gap-2">
+                      <label className="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer text-center">
+                        Re-upload via Cloudinary
+                        <input type="file" accept="image/*" onChange={handleLogoFileSelect} className="hidden" />
+                      </label>
+                      <label className="flex-1 px-3 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold cursor-pointer text-center">
+                        Re-upload via Firebase
+                        <input type="file" accept="image/*" onChange={handleLogoFileSelect} className="hidden" />
+                      </label>
+                    </div>
+                  )}
+                </div>
+                {logoPreview && (
+                  <button onClick={() => { setLogoPreview(''); setSettings(prev => ({ ...prev, siteLogo: '' })); setLogoFile(null); }}
+                    className="ml-auto p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-500/20 text-red-500 transition-colors" title="Remove logo">
+                    <FiX />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -321,6 +489,49 @@ export default function AdminSettingsPage() {
               </p>
             </div>
 
+            {/* WhatsApp Channel Toggle */}
+            <div className="p-4 rounded-xl bg-dark-50 dark:bg-dark-900 border border-dark-200 dark:border-dark-700">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <FiMessageCircle className={settings.whatsappChannelEnabled ? 'text-green-500' : 'text-gray-500'} />
+                  <span className="font-semibold text-dark-900 dark:text-white">
+                    WhatsApp Channel
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSettings(prev => ({ ...prev, whatsappChannelEnabled: !prev.whatsappChannelEnabled }))}
+                  className={`relative inline-flex items-center h-8 w-14 rounded-full transition-colors ${
+                    settings.whatsappChannelEnabled ? 'bg-green-500' : 'bg-gray-400'
+                  }`}
+                >
+                  <span
+                    className={`inline-block w-6 h-6 transform bg-white rounded-full transition-transform ${
+                      settings.whatsappChannelEnabled ? 'translate-x-7' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              <p className="text-xs text-dark-500">
+                {settings.whatsappChannelEnabled
+                  ? '✅ Button visible to users'
+                  : 'Button is hidden'}
+              </p>
+              
+              {/* WhatsApp Channel URL Input */}
+              <div className="mt-3">
+                <label className="block text-xs font-semibold text-dark-700 dark:text-dark-300 mb-1">
+                  Channel URL
+                </label>
+                <input
+                  type="url"
+                  value={settings.whatsappChannelUrl}
+                  onChange={(e) => setSettings(prev => ({ ...prev, whatsappChannelUrl: e.target.value }))}
+                  placeholder="https://whatsapp.com/channel/..."
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
             {/* Save Button */}
             <button
               onClick={handleSave}
@@ -342,7 +553,56 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
-      {/* Whitelisted Users Section - Always visible */}
+      {/* Per-Page Maintenance Mode */}
+      <div className="mt-6 bg-dark-100 dark:bg-dark-800 rounded-2xl p-6 border border-dark-200 dark:border-dark-700">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h3 className="text-xl font-bold text-dark-900 dark:text-white flex items-center gap-2">
+              <FiAlertTriangle className="text-orange-500" />
+              Per-Page Maintenance
+            </h3>
+            <p className="text-sm text-dark-500 dark:text-dark-400 mt-2">
+              Put individual pages under maintenance. Users will see "Under Maintenance" for that specific page.
+            </p>
+          </div>
+          <div className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400">
+            {Object.values(settings.pageMaintenance).filter(Boolean).length} / {PAGE_MAINTENANCE_KEYS.length} Active
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+          {PAGE_MAINTENANCE_KEYS.map(({ key, label, desc, icon }) => {
+            const isMaintenance = settings.pageMaintenance[key] || false;
+            return (
+              <div
+                key={key}
+                className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                  isMaintenance
+                    ? 'border-orange-400 dark:border-orange-500 bg-orange-50 dark:bg-orange-500/10'
+                    : 'border-dark-200 dark:border-dark-700 bg-dark-50 dark:bg-dark-900 hover:border-dark-300 dark:hover:border-dark-600'
+                }`}
+                onClick={() => togglePageMaintenance(key)}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{icon}</span>
+                    <span className="font-semibold text-dark-900 dark:text-white text-sm">{label}</span>
+                  </div>
+                  <div className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${isMaintenance ? 'bg-orange-500' : 'bg-gray-300 dark:bg-dark-600'}`}>
+                    <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform shadow-sm ${isMaintenance ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </div>
+                </div>
+                <p className="text-xs text-dark-500 dark:text-dark-400">{desc}</p>
+                {isMaintenance && (
+                  <p className="text-[10px] font-bold text-orange-600 dark:text-orange-400 mt-2 uppercase tracking-wide">⚠️ Under Maintenance</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Whitelisted Users Section */}
       <div className="mt-6 bg-dark-100 dark:bg-dark-800 rounded-2xl p-6 border border-dark-200 dark:border-dark-700">
         <div className="flex items-center justify-between mb-4">
           <div>

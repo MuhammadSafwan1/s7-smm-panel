@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, doc, updateDoc, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, query, orderBy, where, addDoc } from 'firebase/firestore';
 import { useCurrency } from '@/context/CurrencyContext';
 import {
   FiSearch, FiFilter, FiCheckCircle, FiClock,
@@ -22,6 +22,27 @@ export default function OrdersManagement() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [updating, setUpdating]           = useState(false);
+  const [syncing, setSyncing]             = useState(false);
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [providers, setProviders] = useState({});
+
+  const PROXY = 'https://smm-proxy.ms8347750.workers.dev';
+  const SYNC_INTERVAL = 120000; // 2 minutes
+
+  const STATUS_MAP = {
+    'Pending':     'pending',
+    'In progress': 'processing',
+    'Processing':  'processing',
+    'Active':      'processing',
+    'Completed':   'completed',
+    'Partial':     'partial',
+    'Canceled':    'cancelled',
+    'Cancelled':   'cancelled',
+    'Failed':      'failed',
+    'Refunded':    'refunded',
+    'Refilling':   'refilling',
+  };
 
   const statusOptions = [
     { value: 'all',        label: 'All Orders'  },
@@ -34,8 +55,32 @@ export default function OrdersManagement() {
     { value: 'failed',     label: 'Failed'      },
   ];
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => { 
+    fetchOrders();
+    fetchProviders();
+    
+    // Auto-sync every 2 minutes
+    const interval = setInterval(() => {
+      syncActiveOrders();
+    }, SYNC_INTERVAL);
+    
+    return () => clearInterval(interval);
+  }, []);
+  
   useEffect(() => { filterOrders(); }, [searchTerm, statusFilter, orders]);
+
+  const fetchProviders = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'providers'));
+      const providerMap = {};
+      snap.docs.forEach(d => {
+        providerMap[d.id] = d.data();
+      });
+      setProviders(providerMap);
+    } catch (e) {
+      console.error('Failed to load providers', e);
+    }
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -52,10 +97,156 @@ export default function OrdersManagement() {
         return o;
       }));
       setOrders(data);
+      
+      // Auto-sync active orders after loading
+      const synced = await syncOrdersList(data);
+      setOrders(synced);
     } catch (e) {
       toast.error('Failed to load orders');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncActiveOrders = async () => {
+    setSyncing(true);
+    try {
+      console.log('🔄 Auto-syncing active orders with provider...');
+      const current = [...orders];
+      const synced = await syncOrdersList(current);
+      setOrders(synced);
+      console.log('✅ Sync complete');
+    } catch (e) {
+      console.error('Sync error:', e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const syncOrdersList = async (ordersList) => {
+    const active = ordersList.filter(o => 
+      o.providerOrderId && 
+      o.providerId && 
+      ['pending', 'processing', 'refilling'].includes(o.status)
+    );
+    
+    if (active.length === 0) return ordersList;
+    
+    console.log(`🔄 Syncing ${active.length} active orders...`);
+    
+    const updated = await Promise.all(ordersList.map(async (order) => {
+      if (order.providerOrderId && order.providerId && ['pending', 'processing', 'refilling'].includes(order.status)) {
+        return await syncSingleOrder(order);
+      }
+      return order;
+    }));
+    
+    return updated;
+  };
+
+  const syncSingleOrder = async (order) => {
+    try {
+      // Get provider
+      const providerDoc = await getDocs(query(collection(db, 'providers'), where('__name__', '==', order.providerId)));
+      if (providerDoc.empty) return order;
+      
+      const provider = providerDoc.docs[0].data();
+      
+      // Fetch status from provider
+      const res = await fetch(PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiUrl: provider.apiUrl,
+          apiKey: provider.apiKey,
+          action: 'status',
+          order: order.providerOrderId
+        }),
+      });
+      
+      if (res.status === 429) {
+        console.warn('Rate limited - skipping');
+        return order;
+      }
+      
+      const result = await res.json();
+      if (!result.success || !result.data) return order;
+
+      const d = result.data;
+      const newStatus = STATUS_MAP[d.status] || order.status;
+      const startCount = d.start_count != null ? parseInt(d.start_count) : order.startCount;
+      const remains = d.remains != null ? parseInt(d.remains) : order.remains;
+
+      const changed = newStatus !== order.status || startCount !== order.startCount || remains !== order.remains;
+
+      if (changed) {
+        console.log(`📝 Updating order #${order.id.substring(0,8)}: ${order.status} → ${newStatus}`);
+        
+        const updateData = { 
+          status: newStatus, 
+          startCount, 
+          remains, 
+          updatedAt: new Date() 
+        };
+        
+        if (newStatus === 'completed' && !order.completedAt) {
+          updateData.completedAt = new Date();
+        }
+
+        // Auto-refund for partial (98%)
+        if (newStatus === 'partial' && order.charge && !order.refundIssued) {
+          const refundAmount = parseFloat((order.charge * 0.98 * (remains / parseInt(order.quantity))).toFixed(4));
+          if (refundAmount > 0) {
+            const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
+            if (!userSnap.empty) {
+              const userDoc = userSnap.docs[0];
+              const newBal = parseFloat(((userDoc.data().balance || 0) + refundAmount).toFixed(4));
+              await updateDoc(doc(db, 'users', userDoc.id), { balance: newBal });
+              await addDoc(collection(db, 'transactions'), {
+                userId: order.userId,
+                orderId: order.id,
+                type: 'refund',
+                amount: refundAmount,
+                description: `Partial refund (2% fee) for order #${order.id.substring(0, 8)}`,
+                createdAt: new Date(),
+              });
+            }
+            updateData.refundIssued = true;
+            updateData.refundAmount = refundAmount;
+          }
+        }
+
+        // Auto-refund for cancelled/refunded by provider (98%)
+        if ((newStatus === 'cancelled' || newStatus === 'refunded') && order.charge && !order.refundIssued) {
+          const refundAmount = parseFloat((order.charge * 0.98).toFixed(4));
+          if (refundAmount > 0) {
+            const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
+            if (!userSnap.empty) {
+              const userDoc = userSnap.docs[0];
+              const newBal = parseFloat(((userDoc.data().balance || 0) + refundAmount).toFixed(4));
+              await updateDoc(doc(db, 'users', userDoc.id), { balance: newBal });
+              await addDoc(collection(db, 'transactions'), {
+                userId: order.userId,
+                orderId: order.id,
+                type: 'refund',
+                amount: refundAmount,
+                description: `Provider ${newStatus} refund (2% fee) for order #${order.id.substring(0, 8)}`,
+                createdAt: new Date(),
+              });
+            }
+            updateData.refundIssued = true;
+            updateData.refundAmount = refundAmount;
+          }
+        }
+
+        await updateDoc(doc(db, 'orders', order.id), updateData);
+        return { ...order, ...updateData };
+      }
+      
+      return order;
+    } catch (e) {
+      console.error('Sync error for order:', order.id, e.message);
+      return order;
     }
   };
 
@@ -77,34 +268,156 @@ export default function OrdersManagement() {
   const updateOrderStatus = async (orderId, newStatus) => {
     setUpdating(true);
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status: newStatus, updatedAt: new Date() });
+      const order = orders.find(o => o.id === orderId);
+      if (!order) {
+        toast.error('Order not found');
+        return;
+      }
+      
+      // Update Firestore first
+      await updateDoc(doc(db, 'orders', orderId), { 
+        status: newStatus, 
+        updatedAt: new Date() 
+      });
+      
+      // If changing to cancelled/refunded, try to sync with provider and issue refund
+      if ((newStatus === 'cancelled' || newStatus === 'refunded') && order.providerOrderId && order.providerId && order.charge && !order.refundIssued) {
+        try {
+          // Get provider details
+          const providerSnap = await getDocs(query(collection(db, 'providers'), where('__name__', '==', order.providerId)));
+          
+          if (!providerSnap.empty) {
+            const provider = providerSnap.docs[0].data();
+            
+            // Try to cancel with provider
+            const res = await fetch(PROXY, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                apiUrl: provider.apiUrl,
+                apiKey: provider.apiKey,
+                action: 'cancel',
+                orders: order.providerOrderId
+              }),
+            });
+            
+            if (res.ok) {
+              const result = await res.json();
+              console.log('Provider cancel result:', result);
+            }
+          }
+          
+          // Issue refund (98%) regardless of provider response
+          const refundAmount = parseFloat((order.charge * 0.98).toFixed(4));
+          const usersSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
+          
+          if (!usersSnap.empty) {
+            const userDoc = usersSnap.docs[0];
+            const newBalance = parseFloat(((userDoc.data().balance || 0) + refundAmount).toFixed(4));
+            await updateDoc(doc(db, 'users', userDoc.id), { balance: newBalance });
+            
+            // Create transaction record
+            await addDoc(collection(db, 'transactions'), {
+              userId: order.userId,
+              orderId: order.id,
+              type: 'refund',
+              amount: refundAmount,
+              description: `Admin ${newStatus} refund (2% fee) for order #${order.id.substring(0, 8)}`,
+              createdAt: new Date(),
+            });
+            
+            // Mark refund as issued
+            await updateDoc(doc(db, 'orders', orderId), {
+              refundIssued: true,
+              refundAmount: refundAmount
+            });
+          }
+        } catch (refundError) {
+          console.error('Refund error:', refundError);
+          // Don't fail the status update if refund fails
+        }
+      }
+      
       toast.success(`Status updated to ${newStatus}`);
-      fetchOrders();
+      await fetchOrders();
       setShowDetailsModal(false);
-    } catch { toast.error('Failed to update status'); }
-    finally { setUpdating(false); }
+    } catch (error) {
+      console.error('Update status error:', error);
+      toast.error('Failed to update status: ' + error.message);
+    } finally {
+      setUpdating(false);
+    }
   };
 
-  const refundOrder = async (orderId, userId, charge) => {
+  const refundOrder = async () => {
+    if (!selectedOrder) return;
+    
+    const amount = parseFloat(refundAmount);
+    if (!amount || isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid refund amount');
+      return;
+    }
+    
+    if (amount > selectedOrder.charge) {
+      toast.error('Refund amount cannot exceed order charge');
+      return;
+    }
+    
     setUpdating(true);
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status: 'refunded', updatedAt: new Date() });
-      const usersSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', userId)));
-      if (!usersSnap.empty) {
-        const ud = usersSnap.docs[0];
-        await updateDoc(doc(db, 'users', ud.id), { balance: (ud.data().balance || 0) + charge });
+      // Get user document
+      const usersSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', selectedOrder.userId)));
+      
+      if (usersSnap.empty) {
+        toast.error('User not found');
+        return;
       }
-      toast.success(`Refunded! ${format(charge)} added to user balance`);
-      fetchOrders();
+      
+      const userDoc = usersSnap.docs[0];
+      const currentBalance = userDoc.data().balance || 0;
+      const newBalance = parseFloat((currentBalance + amount).toFixed(4));
+      
+      // Update user balance
+      await updateDoc(doc(db, 'users', userDoc.id), { 
+        balance: newBalance,
+        updatedAt: new Date()
+      });
+      
+      // Create transaction record
+      await addDoc(collection(db, 'transactions'), {
+        userId: selectedOrder.userId,
+        orderId: selectedOrder.id,
+        type: 'refund',
+        amount: amount,
+        description: `Refund for order #${selectedOrder.id.substring(0, 8)}`,
+        createdAt: new Date(),
+      });
+      
+      // Update order status
+      await updateDoc(doc(db, 'orders', selectedOrder.id), { 
+        status: 'refunded',
+        refundIssued: true,
+        refundAmount: amount,
+        updatedAt: new Date() 
+      });
+      
+      toast.success(`✅ Refunded! ${format(amount)} added to user balance`);
+      setShowRefundModal(false);
       setShowDetailsModal(false);
-    } catch { toast.error('Failed to refund'); }
-    finally { setUpdating(false); }
+      setRefundAmount('');
+      await fetchOrders();
+    } catch (error) {
+      console.error('Refund error:', error);
+      toast.error('Failed to refund: ' + error.message);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'completed':  return <FiCheckCircle className="text-green-500" />;
-      case 'pending':    return <FiClock className="text-yellow-500" />;
+      case 'completed':  return <FiCheckCircle className="text-green-500 animate-pulse" />;
+      case 'pending':    return <FiClock className="text-yellow-500 animate-spin" />;
       case 'processing': return <FiRefreshCw className="text-blue-500 animate-spin" />;
       case 'cancelled':
       case 'failed':     return <FiXCircle className="text-red-500" />;
@@ -127,9 +440,19 @@ export default function OrdersManagement() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-3xl font-bold text-dark-900 dark:text-white mb-2">Orders Management</h2>
-        <p className="text-dark-500 dark:text-dark-400">View and manage all customer orders</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-dark-900 dark:text-white mb-2">Orders Management</h2>
+          <p className="text-dark-500 dark:text-dark-400">View and manage all customer orders</p>
+        </div>
+        <button
+          onClick={syncActiveOrders}
+          disabled={syncing}
+          className="btn-outline flex items-center gap-2"
+        >
+          <FiRefreshCw className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Syncing...' : 'Sync Orders'}
+        </button>
       </div>
 
       <div className="glass-card p-4 mb-6">
@@ -180,7 +503,7 @@ export default function OrdersManagement() {
             <table className="w-full">
               <thead className="bg-dark-100 dark:bg-dark-800 border-b border-dark-200 dark:border-dark-700">
                 <tr>
-                  {['Order ID','User','Service','Platform','Quantity','Charge','Status','Date','Actions'].map(h => (
+                  {['Order ID','User','Service','Service ID','Platform','Quantity','Charge','Status','Date','Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase">{h}</th>
                   ))}
                 </tr>
@@ -191,6 +514,22 @@ export default function OrdersManagement() {
                     <td className="px-4 py-3"><span className="font-mono text-sm">#{order.id.substring(0, 8)}</span></td>
                     <td className="px-4 py-3"><span className="text-sm text-dark-700 dark:text-dark-300">{order.userEmail || 'Unknown'}</span></td>
                     <td className="px-4 py-3"><span className="text-sm text-dark-700 dark:text-dark-300">{order.serviceName || 'N/A'}</span></td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        {/* Website Service ID */}
+                        <span className="font-mono text-xs bg-primary-100 dark:bg-primary-900/30 px-2 py-0.5 rounded text-primary-700 dark:text-primary-400 inline-block w-fit">
+                          Web: {order.serviceId || 'N/A'}
+                        </span>
+                        {/* Provider Service ID */}
+                        {order.providerId && providers[order.providerId] && order.providerServiceId ? (
+                          <span className="font-mono text-xs bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-blue-700 dark:text-blue-400 inline-block w-fit">
+                            {providers[order.providerId].name}: {order.providerServiceId}
+                          </span>
+                        ) : (
+                          <span className="font-mono text-xs text-dark-400">Provider: N/A</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3"><span className="text-sm text-dark-700 dark:text-dark-300">{order.platformName || 'N/A'}</span></td>
                     <td className="px-4 py-3"><span className="text-sm font-semibold">{order.quantity?.toLocaleString()}</span></td>
                     <td className="px-4 py-3"><span className="text-sm font-bold text-primary-600 dark:text-primary-400">{format(order.charge || 0)}</span></td>
@@ -232,13 +571,36 @@ export default function OrdersManagement() {
                     ['Service', selectedOrder.serviceName || 'N/A'],
                     ['Platform', selectedOrder.platformName || 'N/A'],
                     ['Category', selectedOrder.categoryName || 'N/A'],
+                  ].map(([label, val]) => (
+                    <div key={label}>
+                      <p className="text-xs text-dark-500 mb-1">{label}</p>
+                      <p className={`text-sm font-medium ${label === 'Service ID' ? 'font-mono text-primary-600 dark:text-primary-400' : 'text-dark-900 dark:text-white'}`}>{val}</p>
+                    </div>
+                  ))}
+                  {/* Service IDs - separate section */}
+                  <div className="col-span-2">
+                    <p className="text-xs text-dark-500 mb-1">Service IDs</p>
+                    <div className="flex flex-col gap-1">
+                      <span className="font-mono text-xs bg-primary-100 dark:bg-primary-900/30 px-2 py-1 rounded text-primary-700 dark:text-primary-400 inline-block w-fit">
+                        Website: {selectedOrder.serviceId || 'N/A'}
+                      </span>
+                      {selectedOrder.providerId && providers[selectedOrder.providerId] && selectedOrder.providerServiceId ? (
+                        <span className="font-mono text-xs bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded text-blue-700 dark:text-blue-400 inline-block w-fit">
+                          {providers[selectedOrder.providerId].name}: {selectedOrder.providerServiceId}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-xs text-dark-400">Provider: N/A</span>
+                      )}
+                    </div>
+                  </div>
+                  {[
                     ['Quantity', selectedOrder.quantity?.toLocaleString()],
                     ['Start Count', selectedOrder.startCount || 0],
                     ['Remains', selectedOrder.remains || 0],
                   ].map(([label, val]) => (
                     <div key={label}>
                       <p className="text-xs text-dark-500 mb-1">{label}</p>
-                      <p className="text-sm font-medium text-dark-900 dark:text-white">{val}</p>
+                      <p className={`text-sm font-medium ${label === 'Service ID' ? 'font-mono text-primary-600 dark:text-primary-400' : 'text-dark-900 dark:text-white'}`}>{val}</p>
                     </div>
                   ))}
                   <div>
@@ -276,9 +638,13 @@ export default function OrdersManagement() {
                     ))}
                   </div>
                 </div>
-                {selectedOrder.status !== 'refunded' && (
+                {selectedOrder.status !== 'refunded' && !selectedOrder.refundIssued && (
                   <div className="pt-4 border-t border-dark-200 dark:border-dark-700">
-                    <button onClick={() => refundOrder(selectedOrder.id, selectedOrder.userId, selectedOrder.charge)}
+                    <button 
+                      onClick={() => {
+                        setRefundAmount(String(selectedOrder.charge || 0));
+                        setShowRefundModal(true);
+                      }}
                       disabled={updating}
                       className="w-full btn-secondary text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center justify-center gap-2">
                       <FiDollarSign />
@@ -290,6 +656,61 @@ export default function OrdersManagement() {
                   <p>Created: {selectedOrder.createdAt?.toDate().toLocaleString()}</p>
                   <p>Updated: {selectedOrder.updatedAt?.toDate().toLocaleString()}</p>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Modal */}
+      {showRefundModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="glass-card max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-dark-900 dark:text-white mb-4">Refund Order</h3>
+              <p className="text-sm text-dark-600 dark:text-dark-400 mb-4">
+                Order: #{selectedOrder.id.substring(0, 8)}<br/>
+                Total Charge: {format(selectedOrder.charge || 0)}
+              </p>
+              
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-2">
+                  Refund Amount
+                </label>
+                <input
+                  type="number"
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(e.target.value)}
+                  placeholder="Enter refund amount"
+                  step="0.01"
+                  min="0"
+                  max={selectedOrder.charge}
+                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-lg font-semibold"
+                />
+                <p className="text-xs text-dark-500 mt-2">
+                  Maximum: {format(selectedOrder.charge || 0)}
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowRefundModal(false);
+                    setRefundAmount('');
+                  }}
+                  disabled={updating}
+                  className="flex-1 px-4 py-3 bg-dark-200 dark:bg-dark-700 text-dark-900 dark:text-white rounded-lg font-medium hover:bg-dark-300 dark:hover:bg-dark-600 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={refundOrder}
+                  disabled={updating}
+                  className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <FiDollarSign />
+                  {updating ? 'Processing...' : 'Confirm Refund'}
+                </button>
               </div>
             </div>
           </div>

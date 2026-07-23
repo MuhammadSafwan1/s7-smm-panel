@@ -1,25 +1,117 @@
 const functions = require('firebase-functions');
 const cors = require('cors');
 const express = require('express');
-const fetch = require('node-fetch');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const path = require('path');
 
-// Import your backend app
-const app = require('../backend/src/server');
+// Firebase Admin setup
+const admin = require('firebase-admin');
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 
-// Wrap Express app for Cloud Functions
-const api = express();
+// Import controllers and middleware
+const rateLimitConfigs = require('../backend/src/middleware/rateLimit');
+const { logIPAccess } = require('../backend/src/utils/ipUtils');
+const paymentRoutes = require('../backend/src/routes/payment.routes');
+const adminRoutes = require('../backend/src/routes/admin.routes');
+const smmRoutes = require('../backend/src/routes/smm.routes');
+const platformRoutes = require('../backend/src/routes/platform.routes');
+const categoryRoutes = require('../backend/src/routes/category.routes');
+const serviceRoutes = require('../backend/src/routes/service.routes');
+const orderRoutes = require('../backend/src/routes/order.routes');
+const walletRoutes = require('../backend/src/routes/wallet.routes');
+const ticketRoutes = require('../backend/src/routes/ticket.routes');
+const notificationRoutes = require('../backend/src/routes/notification.routes');
+const providerRoutes = require('../backend/src/routes/provider.routes');
+const proxyRoutes = require('../backend/src/routes/proxy.routes');
+const uploadRoutes = require('../backend/src/routes/upload.routes');
+const userRoutes = require('../backend/src/routes/user.routes');
+const apiV1Routes = require('../backend/src/routes/api.routes');
+const { errorHandler, notFound } = require('../backend/src/middleware/error.middleware');
 
-// Enable CORS
-api.use(cors({ 
-  origin: true,
-  credentials: true 
+// Create Express app for the API
+const app = express();
+
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://*.firebaseapp.com", "https://*.googleapis.com"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
 }));
 
-// Mount backend routes at root so hosting rewrite /api/** works correctly
-api.use('/', app);
+app.use(cors({
+  origin: [
+    'https://msfsmm.web.app',
+    'https://msfsmm.firebaseapp.com',
+  ],
+  credentials: true,
+  optionsSuccessStatus: 200,
+}));
+
+// IP logging middleware
+app.use((req, res, next) => {
+  try {
+    logIPAccess(req, 'api_request');
+  } catch (err) {
+    console.warn('IP logging failed:', err.message);
+  }
+  next();
+});
+
+// Body parsing
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Logging in development
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ success: true, message: 'MSF SMM Panel API is running', timestamp: new Date().toISOString() });
+});
+
+// Routes with rate limiting
+app.use('/api/upload', uploadRoutes);
+app.use('/api/proxy', proxyRoutes);
+app.use('/api/user', rateLimitConfigs.auth, userRoutes);
+app.use('/api', rateLimitConfigs.api, apiV1Routes);
+app.use('/api/providers', rateLimitConfigs.admin, providerRoutes);
+app.use('/api/platforms', platformRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/services', serviceRoutes);
+app.use('/api/orders', rateLimitConfigs.orders, orderRoutes);
+app.use('/api/wallet', rateLimitConfigs.payment, walletRoutes);
+app.use('/api/tickets', ticketRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/payments', rateLimitConfigs.payment, paymentRoutes);
+app.use('/api/admin', rateLimitConfigs.admin, adminRoutes);
+app.use('/api/smm', smmRoutes);
+
+// Error handling
+app.use(notFound);
+app.use(errorHandler);
 
 // Export as Cloud Function
-exports.api = functions.https.onRequest(api);
+exports.api = functions.runWith({
+  timeoutSeconds: 540,
+  memory: '1GB'
+}).https.onRequest(app);
 
 /**
  * Standalone provider proxy function — bypasses CORS

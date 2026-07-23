@@ -9,9 +9,9 @@ export default function VerifyGate({ children, required = true }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if already verified in this session
-    const isVerified = sessionStorage.getItem('cf_verified');
-    const verifiedAt = sessionStorage.getItem('cf_verified_at');
+    // Check if already verified in this session (check both storages)
+    const isVerified = localStorage.getItem('cf_verified') || sessionStorage.getItem('cf_verified');
+    const verifiedAt = localStorage.getItem('cf_verified_at') || sessionStorage.getItem('cf_verified_at');
     
     // Re-verify every 30 minutes
     if (isVerified === 'true' && verifiedAt) {
@@ -27,8 +27,12 @@ export default function VerifyGate({ children, required = true }) {
 
   const handleVerify = useCallback((token) => {
     if (token) {
+      const timestamp = Date.now().toString();
+      // Set in BOTH storages for persistence across tabs
       sessionStorage.setItem('cf_verified', 'true');
-      sessionStorage.setItem('cf_verified_at', Date.now().toString());
+      sessionStorage.setItem('cf_verified_at', timestamp);
+      localStorage.setItem('cf_verified', 'true');
+      localStorage.setItem('cf_verified_at', timestamp);
       setCaptchaToken(token);
       // Small delay to show success message, then redirect
       setTimeout(() => {

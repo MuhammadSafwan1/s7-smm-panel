@@ -39,12 +39,10 @@ export default function HelpPage() {
   const filterVideos = () => {
     let filtered = videos;
 
-    // Filter by category
     if (selectedCategory !== 'All') {
       filtered = filtered.filter(v => v.category === selectedCategory);
     }
 
-    // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(v =>
@@ -57,14 +55,31 @@ export default function HelpPage() {
   };
 
   const getEmbedUrl = (url) => {
-    // Convert YouTube watch URL to embed URL
-    if (url.includes('youtube.com/watch?v=')) {
+    if (!url) return '';
+    if (url.includes('youtube.com/watch')) {
       const videoId = url.split('v=')[1]?.split('&')[0];
-      return `https://www.youtube.com/embed/${videoId}`;
+      if (videoId) return `https://www.youtube.com/embed/${videoId}`;
     }
     if (url.includes('youtu.be/')) {
       const videoId = url.split('youtu.be/')[1]?.split('?')[0];
-      return `https://www.youtube.com/embed/${videoId}`;
+      if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (url.includes('youtube.com/shorts/')) {
+      const videoId = url.split('shorts/')[1]?.split('?')[0];
+      if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (url.includes('youtube.com/embed/')) {
+      return url;
+    }
+    if (url.includes('youtube-nocookie.com/embed/')) {
+      return url;
+    }
+    if (url.includes('vimeo.com/')) {
+      const videoId = url.split('vimeo.com/')[1]?.split('?')[0];
+      if (videoId) return `https://player.vimeo.com/video/${videoId}`;
+    }
+    if (url.match(/\.(mp4|webm|ogg)$/i)) {
+      return url;
     }
     return url;
   };
@@ -72,109 +87,112 @@ export default function HelpPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 md:py-12 relative z-10">
-      {/* Header */}
-      <div className="max-w-7xl mx-auto mb-12 text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl gradient-bg mb-4 shadow-lg shadow-primary-500/50">
-          <FiVideo className="text-3xl text-white" />
-        </div>
-        <h1 className="text-4xl md:text-5xl font-black gradient-text mb-4">
-          Help & Tutorials
-        </h1>
-        <p className="text-lg text-dark-600 dark:text-dark-300 max-w-2xl mx-auto">
-          Watch step-by-step video guides to get the most out of MSF SMM Panel
-        </p>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="max-w-7xl mx-auto mb-8 space-y-4">
-        {/* Search Bar */}
-        <div className="relative">
-          <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-400" />
-          <input
-            type="text"
-            placeholder="Search videos..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-field pl-12 w-full"
-          />
+    <div className="min-h-screen py-6 px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+      <div className="max-w-[1920px] mx-auto">
+        {/* Header */}
+        <div className="mb-12 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 mb-4 shadow-lg shadow-blue-600/30">
+            <FiVideo className="text-3xl text-white" />
+          </div>
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">
+            Help & Tutorials
+          </h1>
+          <p className="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
+            Watch step-by-step video guides to get the most out of MSF SMM Panel
+          </p>
         </div>
 
-        {/* Category Filter */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
-          <FiFilter className="text-dark-400 flex-shrink-0" />
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-xl font-medium whitespace-nowrap transition-all flex-shrink-0 ${
-                selectedCategory === cat
-                  ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/25'
-                  : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </div>
+        {/* Search and Filters */}
+        <div className="mb-8 space-y-4">
+          {/* Search Bar */}
+          <div className="relative max-w-3xl mx-auto">
+            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input
+              type="text"
+              placeholder="Search videos..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-white dark:bg-[#1a2742] border border-gray-200 dark:border-[#253a5e] rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            />
+          </div>
 
-      {/* Videos Grid */}
-      <div className="max-w-7xl mx-auto">
-        {filteredVideos.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredVideos.map((video) => (
-              <div
-                key={video.id}
-                className="glass-card p-4 space-y-3 hover:shadow-xl hover:-translate-y-1 transition-all"
+          {/* Category Filter */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 justify-center">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-4 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all flex-shrink-0 ${
+                  selectedCategory === cat
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20'
+                    : 'bg-gray-100 dark:bg-[#253a5e] text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72]'
+                }`}
               >
-                {/* Video Player */}
-                <div className="relative aspect-video rounded-xl overflow-hidden bg-dark-100 dark:bg-dark-800 shadow-lg">
-                  <iframe
-                    src={getEmbedUrl(video.videoUrl)}
-                    className="w-full h-full"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                </div>
-
-                {/* Video Info */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-primary-100 dark:bg-primary-500/20 text-primary-600 dark:text-primary-400">
-                      {video.category}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold text-dark-900 dark:text-white mb-1">
-                    {video.title}
-                  </h3>
-                  {video.description && (
-                    <p className="text-sm text-dark-500 dark:text-dark-400 line-clamp-2">
-                      {video.description}
-                    </p>
-                  )}
-                </div>
-              </div>
+                {cat}
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="text-center py-12 glass-card">
-            <FiVideo className="text-6xl text-dark-300 dark:text-dark-600 mx-auto mb-4" />
-            <p className="text-dark-500 dark:text-dark-400 text-lg">
-              {searchQuery || selectedCategory !== 'All' 
-                ? 'No videos found matching your search'
-                : 'No help videos available yet'
-              }
-            </p>
-          </div>
-        )}
+        </div>
+
+        {/* Videos Grid */}
+        <div>
+          {filteredVideos.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredVideos.map((video) => (
+                <div
+                  key={video.id}
+                  className="bg-white dark:bg-[#1a2742] rounded-2xl border border-gray-100 dark:border-[#253a5e] overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                >
+                  {/* Video Player */}
+                  <div className="relative aspect-video bg-gray-100 dark:bg-[#253a5e]/30">
+                    <iframe
+                      src={getEmbedUrl(video.videoUrl)}
+                      className="w-full h-full"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+
+                  {/* Video Info */}
+                  <div className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30">
+                        {video.category}
+                      </span>
+                    </div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
+                      {video.title}
+                    </h3>
+                    {video.description && (
+                      <p className="text-sm text-gray-400 dark:text-gray-500 line-clamp-2">
+                        {video.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16 bg-white dark:bg-[#1a2742] rounded-2xl border border-gray-100 dark:border-[#253a5e]">
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center mx-auto mb-4">
+                <FiVideo className="text-gray-400 dark:text-gray-500" size={28} />
+              </div>
+              <p className="text-gray-900 dark:text-white font-semibold text-lg">
+                {searchQuery || selectedCategory !== 'All' 
+                  ? 'No videos found matching your search'
+                  : 'No help videos available yet'
+                }
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

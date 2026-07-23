@@ -1,4 +1,4 @@
-const { db } = require('../config/firebaseAdmin');
+const { db, auth, admin } = require('../config/firebaseAdmin');
 const { Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 const smmProviderService = require('../services/smmProvider.service');
@@ -11,7 +11,6 @@ const getAllUsers = async (req, res) => {
     let query = db.collection('users').orderBy('createdAt', 'desc');
     
     if (search) {
-      // Search by email or displayName
       query = query.where('email', '>=', search).where('email', '<=', search + '\uf8ff');
     }
     
@@ -50,16 +49,22 @@ const adjustUserBalance = async (req, res) => {
       return errorResponse(res, 'User not found', 404);
     }
     
-    const currentBalance = userDoc.data()?.balance || 0;
+    const { balance, walletBalance } = userDoc.data();
+    const currentBalance = balance || walletBalance || 0;
     const adjustAmount = type === 'credit' ? parseFloat(amount) : -parseFloat(amount);
     
     if (type === 'debit' && currentBalance < amount) {
       return errorResponse(res, 'Insufficient balance', 400);
     }
     
-    await db.collection('users').doc(userId).update({
+    const updates = {
       balance: FieldValue.increment(adjustAmount),
-    });
+    };
+    if (walletBalance !== undefined) {
+      updates.walletBalance = FieldValue.increment(adjustAmount);
+    }
+    
+    await db.collection('users').doc(userId).update(updates);
     
     // Create transaction record
     await db.collection('transactions').add({
@@ -446,6 +451,154 @@ const getAllTickets = async (req, res) => {
   }
 };
 
+// Ban or unban a user (admin only)
+const toggleUserBan = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { ban, reason } = req.body;
+
+    // Try to update Firebase Auth, but continue even if it fails
+    try {
+      await auth.updateUser(userId, { disabled: ban });
+    } catch (authError) {
+      console.warn('Auth update failed, continuing with Firestore only:', authError.message);
+    }
+
+    // Always update Firestore user doc
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
+    if (userDoc.exists) {
+      await userRef.update({
+        banned: ban,
+        bannedAt: ban ? Timestamp.now() : null,
+        bannedBy: ban ? req.user?.uid || 'admin' : null,
+        banReason: ban ? (reason || 'No reason provided') : null,
+        updatedAt: Timestamp.now(),
+      });
+    }
+
+    return successResponse(res, { disabled: ban, source: userDoc.exists ? 'firestore' : 'auth-only' }, ban ? 'User banned successfully' : 'User unbanned successfully');
+  } catch (error) {
+    console.error('Toggle user ban error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+// Delete user permanently (admin only)
+const deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Delete from Firebase Auth
+    await auth.deleteUser(userId);
+
+    // Delete from Firestore
+    await db.collection('users').doc(userId).delete();
+
+    return successResponse(res, null, 'User deleted permanently');
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+// Update user email (admin only)
+const updateUserEmail = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { email } = req.body;
+
+    if (!email || !email.includes('@')) {
+      return errorResponse(res, 'Invalid email address', 400);
+    }
+
+    // Check if email already taken
+    try {
+      await auth.getUserByEmail(email);
+      return errorResponse(res, 'Email already in use by another account', 400);
+    } catch (_) {}
+
+    await auth.updateUser(userId, { email });
+
+    // Also update Firestore
+    await db.collection('users').doc(userId).update({ email, updatedAt: Timestamp.now() });
+
+    return successResponse(res, { email }, 'User email updated successfully');
+  } catch (error) {
+    console.error('Update user email error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+// Update user password (admin only) - only for email/password users
+const updateUserPassword = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { password } = req.body;
+
+    if (!password || password.length < 6) {
+      return errorResponse(res, 'Password must be at least 6 characters', 400);
+    }
+
+    await auth.updateUser(userId, { password });
+
+    return successResponse(res, null, 'User password updated successfully');
+  } catch (error) {
+    console.error('Update user password error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+// Get full user details including auth provider info (admin only)
+const getUserDetails = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Get from Firebase Auth
+    const userRecord = await auth.getUser(userId);
+
+    // Get provider info
+    const providerInfo = userRecord.providerData.map(p => ({
+      providerId: p.providerId,
+      displayName: p.displayName,
+      email: p.email,
+      photoURL: p.photoURL,
+    }));
+
+    // Determine login method
+    let loginMethod = 'unknown';
+    if (providerInfo.some(p => p.providerId === 'google.com')) {
+      loginMethod = 'google';
+    } else if (providerInfo.some(p => p.providerId === 'password')) {
+      loginMethod = 'email';
+    } else if (providerInfo.length > 0) {
+      loginMethod = providerInfo[0].providerId;
+    }
+
+    // Get Firestore data
+    const userDoc = await db.collection('users').doc(userId).get();
+    const firestoreData = userDoc.exists ? userDoc.data() : {};
+
+    return successResponse(res, {
+      uid: userRecord.uid,
+      email: userRecord.email,
+      emailVerified: userRecord.emailVerified,
+      displayName: userRecord.displayName,
+      photoURL: userRecord.photoURL,
+      phoneNumber: userRecord.phoneNumber,
+      disabled: userRecord.disabled,
+      creationTime: userRecord.metadata?.creationTime,
+      lastSignInTime: userRecord.metadata?.lastSignInTime,
+      loginMethod,
+      providers: providerInfo,
+      firestoreData,
+    }, 'User details retrieved successfully');
+  } catch (error) {
+    console.error('Get user details error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
 module.exports = {
   getAllUsers,
   adjustUserBalance,
@@ -457,4 +610,9 @@ module.exports = {
   rejectDeposit,
   getStatistics,
   getAllTickets,
+  toggleUserBan,
+  deleteUser,
+  updateUserEmail,
+  updateUserPassword,
+  getUserDetails,
 };

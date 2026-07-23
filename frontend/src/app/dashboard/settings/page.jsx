@@ -468,10 +468,10 @@ export default function SettingsPage() {
     <div className="min-h-screen flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-2xl space-y-6">
         {/* Profile Settings Card */}
-        <div className="glass-card p-8">
-          <div className="text-center mb-8">
-            <div className="relative w-24 h-24 mx-auto mb-4">
-              <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-primary-500/20">
+        <div className="glass-card p-4 sm:p-6 lg:p-8">
+          <div className="text-center mb-6 sm:mb-8">
+            <div className="relative w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden ring-4 ring-primary-500/20">
                 {profileImagePreview ? (
                   <img
                     src={profileImagePreview}
@@ -484,15 +484,15 @@ export default function SettingsPage() {
                   />
                 ) : (
                   <div className="w-full h-full gradient-bg flex items-center justify-center">
-                    <FiUser className="text-4xl text-white" />
+                    <FiUser className="text-3xl sm:text-4xl text-white" />
                   </div>
                 )}
               </div>
               <label
                 htmlFor="profile-image"
-                className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary-500 hover:bg-primary-600 flex items-center justify-center cursor-pointer transition-colors shadow-lg"
+                className="absolute bottom-0 right-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary-500 hover:bg-primary-600 flex items-center justify-center cursor-pointer transition-colors shadow-lg"
               >
-                <FiCamera className="text-white text-sm" />
+                <FiCamera className="text-white text-xs sm:text-sm" />
                 <input
                   id="profile-image"
                   type="file"
@@ -502,26 +502,26 @@ export default function SettingsPage() {
                 />
               </label>
             </div>
-            <h1 className="text-3xl font-bold text-dark-900 dark:text-white mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-dark-900 dark:text-white mb-2">
               Profile Settings
             </h1>
-            <p className="text-dark-500 dark:text-dark-400">
+            <p className="text-sm sm:text-base text-dark-500 dark:text-dark-400">
               Update your profile information
             </p>
           </div>
 
-          <form onSubmit={handleProfileUpdate} className="space-y-5">
+          <form onSubmit={handleProfileUpdate} className="space-y-4 sm:space-y-5">
             <div>
               <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-2">
                 Display Name
               </label>
               <div className="relative">
-                <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
+                <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400 text-sm sm:text-base" />
                 <input
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="input-field pl-10"
+                  className="input-field pl-9 sm:pl-10 text-sm sm:text-base py-2.5 sm:py-3"
                   placeholder="Enter your name"
                   maxLength={20}
                   required
@@ -572,28 +572,28 @@ export default function SettingsPage() {
         </div>
 
         {/* Change Password Card */}
-        <div className="glass-card p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
-              <FiLock className="text-3xl text-white" />
+        <div className="glass-card p-4 sm:p-6 lg:p-8">
+          <div className="text-center mb-6 sm:mb-8">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
+              <FiLock className="text-2xl sm:text-3xl text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-dark-900 dark:text-white mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-dark-900 dark:text-white mb-2">
               Change Password
             </h1>
-            <p className="text-dark-500 dark:text-dark-400">
+            <p className="text-sm sm:text-base text-dark-500 dark:text-dark-400">
               Update your password to keep your account secure
             </p>
           </div>
 
           {passwordError && (
-            <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+            <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
               <p className="text-sm text-red-600 dark:text-red-400 font-medium text-center">
                 {passwordError}
               </p>
             </div>
           )}
 
-          <form onSubmit={handlePasswordChange} className="space-y-5">
+          <form onSubmit={handlePasswordChange} className="space-y-4 sm:space-y-5">
             <div>
               <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-2">
                 Current Password
@@ -603,7 +603,7 @@ export default function SettingsPage() {
                   type={showCurrentPassword ? 'text' : 'password'}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="input-field pr-12"
+                  className="input-field pr-11 sm:pr-12 text-sm sm:text-base py-2.5 sm:py-3"
                   placeholder="Enter current password"
                 />
                 <button
@@ -611,7 +611,7 @@ export default function SettingsPage() {
                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 dark:hover:text-dark-300 transition-colors"
                 >
-                  {showCurrentPassword ? <FiEyeOff className="text-lg" /> : <FiEye className="text-lg" />}
+                  {showCurrentPassword ? <FiEyeOff className="text-base sm:text-lg" /> : <FiEye className="text-base sm:text-lg" />}
                 </button>
               </div>
             </div>
@@ -625,7 +625,7 @@ export default function SettingsPage() {
                   type={showNewPassword ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="input-field pr-12"
+                  className="input-field pr-11 sm:pr-12 text-sm sm:text-base py-2.5 sm:py-3"
                   placeholder="Enter new password"
                 />
                 <button
@@ -633,7 +633,7 @@ export default function SettingsPage() {
                   onClick={() => setShowNewPassword(!showNewPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 dark:hover:text-dark-300 transition-colors"
                 >
-                  {showNewPassword ? <FiEyeOff className="text-lg" /> : <FiEye className="text-lg" />}
+                  {showNewPassword ? <FiEyeOff className="text-base sm:text-lg" /> : <FiEye className="text-base sm:text-lg" />}
                 </button>
               </div>
             </div>
@@ -647,7 +647,7 @@ export default function SettingsPage() {
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="input-field pr-12"
+                  className="input-field pr-11 sm:pr-12 text-sm sm:text-base py-2.5 sm:py-3"
                   placeholder="Confirm new password"
                 />
                 <button
@@ -655,15 +655,15 @@ export default function SettingsPage() {
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 dark:hover:text-dark-300 transition-colors"
                 >
-                  {showConfirmPassword ? <FiEyeOff className="text-lg" /> : <FiEye className="text-lg" />}
+                  {showConfirmPassword ? <FiEyeOff className="text-base sm:text-lg" /> : <FiEye className="text-base sm:text-lg" />}
                 </button>
               </div>
             </div>
 
             {newPassword && (
-              <div className="p-4 rounded-xl bg-dark-50 dark:bg-dark-800 space-y-2">
+              <div className="p-3 sm:p-4 rounded-xl bg-dark-50 dark:bg-dark-800 space-y-2">
                 <p className="text-sm font-semibold text-dark-700 dark:text-dark-300 mb-3">Password Requirements:</p>
-                <div className="space-y-2 text-sm">
+                <div className="space-y-2 text-xs sm:text-sm">
                   <div className={`flex items-center gap-2 ${passwordRequirements.length ? 'text-green-600' : 'text-red-600'}`}>
                     <span>{passwordRequirements.length ? '✅' : '❌'}</span>
                     <span>8-21 characters</span>
@@ -685,7 +685,7 @@ export default function SettingsPage() {
             )}
 
             {confirmPassword && (
-              <div className={`text-sm font-medium ${passwordsMatch ? 'text-green-600' : 'text-red-600'}`}>
+              <div className={`text-xs sm:text-sm font-medium ${passwordsMatch ? 'text-green-600' : 'text-red-600'}`}>
                 {passwordsMatch ? '✅ Passwords match' : '❌ Passwords do not match'}
               </div>
             )}
@@ -693,7 +693,7 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={passwordLoading || !allRequirementsMet || !passwordsMatch}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary w-full text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {passwordLoading ? <Spinner size="sm" /> : 'Update Password'}
             </button>
@@ -701,28 +701,28 @@ export default function SettingsPage() {
         </div>
 
         {/* Change Email Card */}
-        <div className="glass-card p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
-              <FiMail className="text-3xl text-white" />
+        <div className="glass-card p-4 sm:p-6 lg:p-8">
+          <div className="text-center mb-6 sm:mb-8">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
+              <FiMail className="text-2xl sm:text-3xl text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-dark-900 dark:text-white mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-dark-900 dark:text-white mb-2">
               Change Email
             </h1>
-            <p className="text-dark-500 dark:text-dark-400">
+            <p className="text-sm sm:text-base text-dark-500 dark:text-dark-400">
               Current email: {user.email}
             </p>
           </div>
 
           {emailError && (
-            <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+            <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
               <p className="text-sm text-red-600 dark:text-red-400 font-medium text-center">
                 {emailError}
               </p>
             </div>
           )}
 
-          <form onSubmit={handleEmailChange} className="space-y-5">
+          <form onSubmit={handleEmailChange} className="space-y-4 sm:space-y-5">
             <div>
               <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-2">
                 New Email Address
@@ -731,7 +731,7 @@ export default function SettingsPage() {
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                className="input-field"
+                className="input-field text-sm sm:text-base py-2.5 sm:py-3"
                 placeholder="newemail@gmail.com"
               />
               <p className="text-xs text-dark-500 dark:text-dark-400 mt-2">
@@ -748,7 +748,7 @@ export default function SettingsPage() {
                   type={showEmailPassword ? 'text' : 'password'}
                   value={emailPassword}
                   onChange={(e) => setEmailPassword(e.target.value)}
-                  className="input-field pr-12"
+                  className="input-field pr-11 sm:pr-12 text-sm sm:text-base py-2.5 sm:py-3"
                   placeholder="Enter your password"
                 />
                 <button
@@ -756,7 +756,7 @@ export default function SettingsPage() {
                   onClick={() => setShowEmailPassword(!showEmailPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 dark:hover:text-dark-300 transition-colors"
                 >
-                  {showEmailPassword ? <FiEyeOff className="text-lg" /> : <FiEye className="text-lg" />}
+                  {showEmailPassword ? <FiEyeOff className="text-base sm:text-lg" /> : <FiEye className="text-base sm:text-lg" />}
                 </button>
               </div>
             </div>
@@ -764,7 +764,7 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={emailLoading}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary w-full text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {emailLoading ? <Spinner size="sm" /> : 'Update Email'}
             </button>
@@ -772,15 +772,15 @@ export default function SettingsPage() {
         </div>
 
         {/* Two-Factor Authentication Card */}
-        <div className="glass-card p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
-              <FiShield className="text-3xl text-white" />
+        <div className="glass-card p-4 sm:p-6 lg:p-8">
+          <div className="text-center mb-6 sm:mb-8">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
+              <FiShield className="text-2xl sm:text-3xl text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-dark-900 dark:text-white mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-dark-900 dark:text-white mb-2">
               Two-Factor Authentication
             </h1>
-            <p className="text-dark-500 dark:text-dark-400">
+            <p className="text-sm sm:text-base text-dark-500 dark:text-dark-400">
               Add an extra layer of security with authenticator app
             </p>
           </div>

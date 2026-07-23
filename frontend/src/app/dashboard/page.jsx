@@ -5,14 +5,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader, Spinner } from '@/components/common/Loader';
-import { FiPackage, FiShoppingBag, FiDollarSign, FiSearch, FiArrowRight, FiArrowLeft, FiChevronRight, FiList, FiUsers, FiCode } from 'react-icons/fi';
+import { FiPackage, FiShoppingBag, FiDollarSign, FiSearch, FiArrowRight, FiArrowLeft, FiChevronRight, FiList, FiUsers, FiTool } from 'react-icons/fi';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, doc, updateDoc, getDoc, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { useCurrency } from '@/context/CurrencyContext';
 
-// Step 1: Platform grid
-function PlatformGrid({ platforms, onSelect }) {
+function PlatformGrid({ platforms, onSelect, expandedId }) {
   if (platforms.length === 0) {
     return (
       <div className="text-center py-16 border-2 border-dashed border-dark-200 dark:border-dark-700 rounded-2xl">
@@ -22,121 +21,220 @@ function PlatformGrid({ platforms, onSelect }) {
       </div>
     );
   }
+
+  const selectedPlatform = platforms.find(p => p.id === expandedId);
+  const otherPlatforms = platforms.filter(p => p.id !== expandedId);
+
+  // If a platform is selected, show only it centered (categories and other platforms are shown separately in parent)
+  if (selectedPlatform) {
+    return (
+      <div className="flex justify-center">
+        <button
+          onClick={() => onSelect(selectedPlatform)}
+          className="group relative flex flex-col items-center gap-4 p-8 rounded-3xl transition-all duration-700 cursor-pointer overflow-hidden border-2 shadow-2xl animate-selected-scale"
+          style={{ 
+            backgroundColor: `${selectedPlatform.color || '#1A6BBD'}15`,
+            borderColor: `${selectedPlatform.color || '#1A6BBD'}50`,
+            boxShadow: `0 20px 60px -10px ${selectedPlatform.color || '#1A6BBD'}50`
+          }}
+        >
+          {/* Animated Gradient Border */}
+          <div className="absolute inset-0 rounded-3xl p-[2px]"
+            style={{ 
+              background: `linear-gradient(135deg, ${selectedPlatform.color || '#1A6BBD'}, ${selectedPlatform.color || '#1A6BBD'}88, ${selectedPlatform.color || '#1A6BBD'}44)`,
+              animation: 'border-glow 3s ease-in-out infinite'
+            }}>
+            <div className="w-full h-full rounded-3xl" style={{ backgroundColor: 'transparent' }}></div>
+          </div>
+
+          {/* Glowing Background Effect */}
+          <div className="absolute inset-0 rounded-3xl opacity-30 blur-2xl"
+            style={{ background: `radial-gradient(circle at center, ${selectedPlatform.color || '#1A6BBD'}40 0%, transparent 70%)` }}
+          ></div>
+
+          {/* Icon - Larger with Glow */}
+          <div className="relative z-10 w-[110px] h-[110px] rounded-3xl flex items-center justify-center transition-all duration-700 shadow-2xl"
+            style={{ 
+              backgroundColor: selectedPlatform.color || '#274C75',
+              boxShadow: `0 15px 40px -8px ${selectedPlatform.color || '#274C75'}80`
+            }}>
+            {selectedPlatform.icon ? (
+              <img src={selectedPlatform.icon} alt={selectedPlatform.name} className="w-[68px] h-[68px] object-contain" />
+            ) : (
+              <span className="text-5xl font-bold text-white">{selectedPlatform.name[0]}</span>
+            )}
+          </div>
+
+          {/* Name - Larger with Gradient */}
+          <span className="relative z-10 text-xl font-bold text-center bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-200 bg-clip-text text-transparent">
+            {selectedPlatform.name}
+          </span>
+
+          {/* Active indicator - Animated Ping */}
+          <span className="absolute top-4 right-4 flex h-5 w-5 z-20">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" 
+              style={{ backgroundColor: selectedPlatform.color || '#1A6BBD' }}></span>
+            <span className="relative inline-flex rounded-full h-5 w-5" 
+              style={{ backgroundColor: selectedPlatform.color || '#1A6BBD' }}></span>
+          </span>
+
+          {/* Shimmer Effect */}
+          <div className="absolute inset-0 rounded-3xl overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+          </div>
+
+          {/* Maintenance badge */}
+          {selectedPlatform.maintenance && (
+            <span className="relative z-10 text-[12px] font-bold px-4 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide animate-pulse">
+              🔧 Maintenance
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  // If nothing is selected, show all platforms in grid with stagger animation
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
       {platforms.map((platform, index) => (
         <button
           key={platform.id}
           onClick={() => onSelect(platform)}
-          className="group relative flex flex-col items-center gap-3 p-5 rounded-2xl bg-dark-100 dark:bg-dark-800 hover:scale-105 transition-all duration-300 hover:shadow-2xl cursor-pointer overflow-hidden"
-          style={{ 
-            '--hover-color': platform.color || '#6366f1',
-            animationDelay: `${index * 0.1}s`
-          }}
+          className={`group relative flex flex-col items-center gap-3 p-5 rounded-2xl transition-all duration-500 cursor-pointer overflow-hidden border border-gray-100 dark:border-[#2a4270] hover:border-transparent hover:-translate-y-1 hover:shadow-xl hover:scale-105 animate-item-pop opacity-0 delay-${Math.min(index * 50, 500)}`}
         >
-          {/* Animated gradient background on hover */}
-          <div 
-            className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br"
-            style={{ 
-              backgroundImage: `linear-gradient(135deg, ${platform.color || '#6366f1'}, ${platform.color || '#6366f1'}40)`
-            }}
-          ></div>
-          
-          {/* Glowing border effect */}
-          <div 
-            className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-            style={{ 
-              boxShadow: `0 0 20px ${platform.color || '#6366f1'}40, inset 0 0 20px ${platform.color || '#6366f1'}10`
-            }}
-          ></div>
+          {/* Hover gradient border */}
+          <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 p-[1px]"
+            style={{ background: `linear-gradient(135deg, ${platform.color || '#1A6BBD'}, ${platform.color || '#1A6BBD'}66, transparent)` }}>
+            <div className="w-full h-full rounded-2xl bg-white dark:bg-[#1e3050]"></div>
+          </div>
 
-          {/* Icon with pulse effect */}
-          <div
-            className="relative w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-lg"
-            style={{ backgroundColor: platform.color || '#6366f1' }}
-          >
-            {/* Shine effect */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-            
+          {/* Icon */}
+          <div className="relative z-10 w-[70px] h-[70px] rounded-2xl flex items-center justify-center transition-all duration-500 shadow-lg group-hover:shadow-2xl"
+            style={{ backgroundColor: '#274C75', boxShadow: '0 8px 20px -4px #274C7550' }}>
             {platform.icon ? (
-              <img src={platform.icon} alt={platform.name} className="w-12 h-12 object-contain relative z-10" />
+              <img src={platform.icon} alt={platform.name} className="w-[44px] h-[44px] object-contain transition-transform duration-500 group-hover:scale-110" />
             ) : (
-              <span className="text-white font-bold text-2xl relative z-10">{platform.name[0]}</span>
+              <span className="text-2xl font-bold text-white">{platform.name[0]}</span>
             )}
           </div>
-          
-          <span className="text-sm font-bold text-dark-900 dark:text-white text-center relative z-10 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+
+          {/* Name */}
+          <span className="relative z-10 text-xs font-semibold text-gray-700 dark:text-gray-200 text-center transition-colors group-hover:text-gray-900 dark:group-hover:text-white">
             {platform.name}
           </span>
-          {platform.description && (
-            <span className="text-xs text-dark-400 text-center line-clamp-1 relative z-10">{platform.description}</span>
+
+          {/* Maintenance badge */}
+          {platform.maintenance && (
+            <span className="relative z-10 text-[11px] font-bold px-3 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide">
+              🔧 Maintenance
+            </span>
           )}
-          
-          {/* Sparkle effect on hover */}
-          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-yellow-400 animate-pulse">
-            ✨
-          </div>
         </button>
       ))}
     </div>
   );
 }
 
-// Step 2: Category grid for selected platform
-function CategoryGrid({ platform, categories, onSelect, onBack }) {
-  const platformCategories = categories.filter(c => c.platformId === platform.id && c.isActive !== false);
+function CategoryGrid({ platform, categories, onSelect, expandedId }) {
+  // Filter categories for this specific platform and sort by sortOrder
+  const platformCategories = categories
+    .filter(c => c.platformId === platform.id && c.isActive !== false)
+    .sort((a, b) => {
+      const orderA = a.sortOrder !== undefined ? a.sortOrder : 999;
+      const orderB = b.sortOrder !== undefined ? b.sortOrder : 999;
+      return orderA - orderB;
+    });
+  
+  if (platformCategories.length === 0) {
+    return (
+      <div className="text-center py-12 border-2 border-dashed border-dark-200 dark:border-dark-700 rounded-2xl">
+        <FiPackage className="text-4xl text-dark-300 dark:text-dark-600 mx-auto mb-3" />
+        <p className="text-dark-500 font-semibold text-base mb-1">No categories yet</p>
+        <p className="text-dark-400 text-sm">No categories added for {platform.name}.</p>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      {/* Back + breadcrumb */}
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-dark-500 hover:text-primary-500 transition-colors">
-          <FiArrowLeft /> Back
-        </button>
-        <span className="text-dark-300 dark:text-dark-600">/</span>
-        <div className="flex items-center gap-2">
-          {platform.icon && <img src={platform.icon} alt={platform.name} className="w-5 h-5 rounded object-contain" />}
-          <span className="text-sm font-semibold text-dark-900 dark:text-white">{platform.name}</span>
-        </div>
-      </div>
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      {platformCategories.map((cat, index) => (
+        <button
+          key={cat.id}
+          onClick={() => onSelect(cat)}
+          className={`group relative flex flex-col items-center gap-3 p-5 rounded-2xl transition-all duration-500 cursor-pointer overflow-hidden border border-white/20 dark:border-white/10 hover:border-transparent hover:-translate-y-1 hover:shadow-2xl hover:scale-105 animate-item-pop opacity-0 delay-${Math.min(index * 50, 500)}`}
+          style={{
+            background: `linear-gradient(135deg, ${platform.color || '#1A6BBD'}15, transparent)`
+          }}
+        >
+          {/* Animated Hover Gradient Border */}
+          <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 p-[1.5px]"
+            style={{ 
+              background: `linear-gradient(135deg, ${platform.color || '#1A6BBD'}, ${platform.color || '#1A6BBD'}88, ${platform.color || '#1A6BBD'}44)`,
+            }}>
+            <div className="w-full h-full rounded-2xl bg-white dark:bg-[#1e3050]"></div>
+          </div>
 
-      {platformCategories.length === 0 ? (
-        <div className="text-center py-16 border-2 border-dashed border-dark-200 dark:border-dark-700 rounded-2xl">
-          <FiPackage className="text-5xl text-dark-300 dark:text-dark-600 mx-auto mb-4" />
-          <p className="text-dark-500 font-semibold text-lg mb-1">No categories yet</p>
-          <p className="text-dark-400 text-sm">No categories have been added for {platform.name} yet.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {platformCategories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => onSelect(cat)}
-              className="group flex flex-col items-center gap-3 p-5 rounded-2xl bg-dark-100 dark:bg-dark-800 hover:scale-105 transition-all duration-200 hover:shadow-xl cursor-pointer"
-            >
-              <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden group-hover:scale-110 transition-transform duration-200"
-                style={{ backgroundColor: platform.color || '#6366f1' }}
-              >
-                {cat.icon ? (
-                  <img src={cat.icon} alt={cat.name} className="w-12 h-12 object-contain" />
-                ) : (
-                  <span className="text-white font-bold text-xl">{cat.name[0]}</span>
-                )}
-              </div>
-              <span className="text-sm font-bold text-dark-900 dark:text-white text-center">{cat.name}</span>
-              {cat.description && (
-                <span className="text-xs text-dark-400 text-center line-clamp-1">{cat.description}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+          {/* Glow Effect on Hover */}
+          <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-20 blur-xl transition-opacity duration-500"
+            style={{ background: `radial-gradient(circle at center, ${platform.color || '#1A6BBD'} 0%, transparent 70%)` }}
+          ></div>
+
+          {/* Icon with Platform Color */}
+          <div className="relative z-10 w-[75px] h-[75px] rounded-2xl flex items-center justify-center transition-all duration-500 shadow-lg group-hover:shadow-2xl group-hover:scale-110"
+            style={{ 
+              backgroundColor: platform.color || '#274C75',
+              boxShadow: `0 8px 20px -4px ${platform.color || '#274C75'}50`
+            }}>
+            {cat.icon ? (
+              <img src={cat.icon} alt={cat.name} className="w-[48px] h-[48px] object-contain transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3" />
+            ) : (
+              <span className="text-2xl font-bold text-white transition-transform duration-500 group-hover:scale-110">{cat.name[0]}</span>
+            )}
+            
+            {/* Icon Shine Effect */}
+            <div className="absolute inset-0 rounded-2xl overflow-hidden">
+              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+            </div>
+          </div>
+
+          {/* Name with Gradient on Hover */}
+          <span className="relative z-10 text-sm font-semibold text-center transition-all duration-300"
+            style={{ 
+              color: '#1f2937'
+            }}>
+            <span className="dark:text-gray-200 group-hover:bg-gradient-to-r group-hover:from-gray-900 group-hover:to-gray-700 dark:group-hover:from-white dark:group-hover:to-gray-200 group-hover:bg-clip-text group-hover:text-transparent transition-all duration-300">
+              {cat.name}
+            </span>
+          </span>
+
+          {/* Floating Particles Effect */}
+          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
+            <div className="absolute top-1/4 left-1/4 w-1 h-1 rounded-full animate-ping" 
+              style={{ backgroundColor: platform.color || '#1A6BBD', animationDuration: '1.5s' }}></div>
+            <div className="absolute top-3/4 right-1/4 w-1 h-1 rounded-full animate-ping" 
+              style={{ backgroundColor: platform.color || '#1A6BBD', animationDuration: '2s', animationDelay: '0.3s' }}></div>
+          </div>
+
+          {/* Maintenance badge */}
+          {cat.maintenance && (
+            <span className="relative z-10 text-[11px] font-bold px-3 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide animate-pulse">
+              🔧 Maintenance
+            </span>
+          )}
+
+          {/* Bottom Gradient Line */}
+          <div className="absolute bottom-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-b-2xl"
+            style={{ 
+              background: `linear-gradient(90deg, transparent, ${platform.color || '#1A6BBD'}, transparent)`
+            }}
+          ></div>
+        </button>
+      ))}
     </div>
   );
 }
 
-// Step 3: Services list for selected category
 function ServicesList({ platform, category, services, onBack, selectedService, onServiceSelect, format }) {
   const [search, setSearch] = useState('');
   const allCategoryServices = services.filter(s => s.categoryId === category.id && s.platformId === platform.id);
@@ -144,41 +242,18 @@ function ServicesList({ platform, category, services, onBack, selectedService, o
     ? allCategoryServices.filter(s =>
         s.name?.toLowerCase().includes(search.toLowerCase()) ||
         (s.serviceId && String(s.serviceId).includes(search))
-      )
-    : allCategoryServices;
+      ).sort((a, b) => parseFloat(a.price || 0) - parseFloat(b.price || 0))
+    : allCategoryServices.sort((a, b) => parseFloat(a.price || 0) - parseFloat(b.price || 0));
 
   return (
     <div>
-      {/* Back + breadcrumb */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-dark-500 hover:text-primary-500 transition-colors">
-          <FiArrowLeft /> Back
-        </button>
-        <span className="text-dark-300 dark:text-dark-600">/</span>
-        <div className="flex items-center gap-1.5">
-          {platform.icon && <img src={platform.icon} alt={platform.name} className="w-4 h-4 rounded object-contain" />}
-          <span className="text-sm text-dark-500">{platform.name}</span>
-        </div>
-        <FiChevronRight className="text-dark-400 text-xs" />
-        <span className="text-sm font-semibold text-dark-900 dark:text-white">{category.name}</span>
-      </div>
+      {/* Breadcrumb removed - shown in parent component above */}
 
-      {/* Search bar */}
       <div className="relative mb-4">
         <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400 text-sm" />
-        <input
-          type="text"
-          placeholder="Search by service name or ID..."
-          value={search}
+        <input type="text" placeholder="Search by service name or ID..." value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm
-            bg-dark-100 dark:bg-dark-800
-            border border-dark-200 dark:border-dark-700
-            text-dark-900 dark:text-white
-            placeholder-dark-400 dark:placeholder-dark-500
-            focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500
-            transition-all"
-        />
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm bg-dark-100 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 text-dark-900 dark:text-white placeholder-dark-400 dark:placeholder-dark-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all" />
         {search && (
           <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600">×</button>
         )}
@@ -204,39 +279,35 @@ function ServicesList({ platform, category, services, onBack, selectedService, o
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  {/* Circular Service ID badge - light navy blue */}
                   {service.serviceId && (
                     <span className="text-sm font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0">
                       {service.serviceId}
                     </span>
                   )}
                   <div className="flex-1 min-w-0">
-                    {/* Service name */}
-                    <h3 className="font-semibold text-dark-900 dark:text-white text-sm leading-tight mb-1">
-                      {service.name}
+                    <h3 className="font-semibold text-dark-900 dark:text-white text-sm leading-tight mb-1 flex items-center gap-2 flex-wrap">
+                      <span>{service.name}</span>
+                      {service.maintenance && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md shadow-orange-500/30 uppercase">🔧 Maintenance</span>
+                      )}
                     </h3>
-                    {/* Meta row */}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                       <span className="text-dark-500">Min: <span className="font-semibold text-dark-700 dark:text-dark-300">{parseInt(service.minQuantity || 0).toLocaleString()}</span></span>
                       <span className="text-dark-400">|</span>
                       <span className="text-dark-500">Max: <span className="font-semibold text-dark-700 dark:text-dark-300">{parseInt(service.maxQuantity || 0).toLocaleString()}</span></span>
                       {(service.avgTime || service.averageTime) && (
-                        <>
-                          <span className="text-dark-400">|</span>
-                          <span className="text-dark-500">⏱ {service.avgTime || service.averageTime}</span>
-                        </>
+                        <><span className="text-dark-400">|</span><span className="text-dark-500">⏱ {service.avgTime || service.averageTime}</span></>
                       )}
                       {service.refillSupported && <span className="text-green-500 font-medium bg-green-500/10 px-1.5 py-0.5 rounded">↩ Refill</span>}
                       {service.cancelSupported && <span className="text-blue-500 font-medium bg-blue-500/10 px-1.5 py-0.5 rounded">✕ Cancel</span>}
                     </div>
                   </div>
                 </div>
-                {/* Price */}
                 <div className="text-right flex-shrink-0">
                   <p className="text-base font-bold text-primary-600 dark:text-primary-400">
                     {format(parseFloat(service.price || 0))}
                   </p>
-                  <p className="text-xs text-dark-400">per 1000</p>
+                  <p className="text-xs text-dark-400">{service.priceUnit || 'per 1000'}</p>
                 </div>
               </div>
             </div>
@@ -253,28 +324,18 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const preselectedPlatformId = searchParams.get('platform');
 
-  // Helper to display wallet balance (stored in PKR) in selected currency
+  const [isWhitelisted, setIsWhitelisted] = useState(false);
+  const [blockedItem, setBlockedItem] = useState(null); // { type: 'platform'|'category'|'service', name: string }
+
   const displayBalance = (pkrBalance) => {
     if (!pkrBalance) return currency === 'PKR' ? '₨0.00' : `${currencies.find(c => c.code === currency)?.symbol || ''}0.00`;
-    
-    if (currency === 'PKR') {
-      return `₨${pkrBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    }
-    
-    // Convert PKR to USD first, then to selected currency
+    if (currency === 'PKR') return `₨${pkrBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const usdAmount = pkrBalance / rates.PKR;
     const convertedAmount = usdAmount * rates[currency];
     const symbol = currencies.find(c => c.code === currency)?.symbol || currency;
-    
     let decimals = 2;
-    if (['BDT', 'INR', 'SAR', 'AED'].includes(currency)) {
-      decimals = convertedAmount < 10 ? 4 : 0;
-    }
-    
-    return `${symbol}${convertedAmount.toLocaleString('en-US', { 
-      minimumFractionDigits: decimals, 
-      maximumFractionDigits: decimals 
-    })}`;
+    if (['BDT', 'INR', 'SAR', 'AED'].includes(currency)) decimals = convertedAmount < 10 ? 4 : 0;
+    return `${symbol}${convertedAmount.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
   };
 
   const [platforms, setPlatforms] = useState([]);
@@ -286,31 +347,72 @@ function DashboardContent() {
   const [totalWebsiteOrders, setTotalWebsiteOrders] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // Navigation state
-  const [step, setStep] = useState('platforms'); // 'platforms' | 'categories' | 'services'
+  const [step, setStep] = useState('platforms'); // Start with platforms
+  const [expandedPlatform, setExpandedPlatform] = useState(null);
+  const [expandedCategory, setExpandedCategory] = useState(null);
   const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
-
-  // Order state
   const [selectedService, setSelectedService] = useState(null);
   const [orderData, setOrderData] = useState({ link: '', quantity: '', comments: '' });
   const [orderLoading, setOrderLoading] = useState(false);
+  const [showServicesPanel, setShowServicesPanel] = useState(false);
 
   useEffect(() => {
-    if (user && !authLoading) {
-      fetchData();
-    } else {
-      setLoading(false);
-    }
+    const fetchWhitelist = async () => {
+      try {
+        const settingsDoc = await getDoc(doc(db, 'siteSettings', 'general'));
+        if (settingsDoc.exists()) {
+          const data = settingsDoc.data();
+          const whitelist = data.whitelistedEmails || [];
+          const currentEmail = (user?.email || '').trim().toLowerCase();
+          const whitelistList = Array.isArray(whitelist) ? whitelist.map(e => (e || '').trim().toLowerCase()).filter(Boolean) : [];
+          const isUserWhitelisted = !!(currentEmail && whitelistList.includes(currentEmail));
+          setIsWhitelisted(isUserWhitelisted);
+          console.log('🔐 Whitelist Check:', { 
+            currentEmail, 
+            whitelist: whitelistList, 
+            isWhitelisted: isUserWhitelisted,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          console.log('⚠️ No siteSettings/general document found');
+        }
+      } catch (e) { 
+        console.error('❌ Failed to fetch whitelist:', e); 
+      }
+    };
+    if (user) fetchWhitelist();
+  }, [user]);
+
+  useEffect(() => {
+    if (user && !authLoading) { fetchData(); }
+    else { setLoading(false); }
   }, [user, authLoading]);
 
-  // Pre-select platform from URL
   useEffect(() => {
     if (preselectedPlatformId && platforms.length > 0) {
       const p = platforms.find(p => p.id === preselectedPlatformId);
-      if (p) { setSelectedPlatform(p); setStep('categories'); }
+      console.log('🔗 Preselected Platform Check:', {
+        preselectedId: preselectedPlatformId,
+        foundPlatform: p?.name || 'NOT FOUND',
+        maintenance: p?.maintenance || false,
+        isWhitelisted,
+        willBlock: p?.maintenance && !isWhitelisted
+      });
+      
+      if (p) {
+        if (p.maintenance && !isWhitelisted) {
+          console.log('🚫 BLOCKING - Preselected platform in maintenance and user not whitelisted');
+          setBlockedItem({ type: 'platform', name: p.name });
+          return;
+        }
+        console.log('✅ ALLOWING - Preselected platform access granted');
+        setExpandedPlatform(p);
+        setSelectedPlatform(p);
+        setStep('categories');
+      }
     }
-  }, [preselectedPlatformId, platforms]);
+  }, [preselectedPlatformId, platforms, isWhitelisted]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -323,65 +425,112 @@ function DashboardContent() {
         getDocs(collection(db, 'orders')),
       ]);
 
-      const platList = platSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(p => p.isActive !== false)
-        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-      const catList = catSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(c => c.isActive !== false)
-        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-      const svcList = svcSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(s => s.isActive !== false);
-
-      setPlatforms(platList);
-      setCategories(catList);
-      setServices(svcList);
-
-      // Calculate total users count
+      setPlatforms(platSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.isActive !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+      
+      // Debug: Log all platforms with maintenance status
+      const allPlatforms = platSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.isActive !== false);
+      console.log('📦 All Platforms:', allPlatforms.map(p => ({
+        name: p.name,
+        maintenance: p.maintenance || false,
+        isActive: p.isActive !== false
+      })));
+      
+      setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.isActive !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+      setServices(svcSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.isActive !== false));
       setTotalUsers(usersSnap.docs.length);
-
-      // Calculate online users (users with recent lastSeen timestamp - within last 5 minutes)
       const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
       const onlineCount = usersSnap.docs.filter(doc => {
         const lastSeen = doc.data().lastSeen?.toMillis?.() || doc.data().lastSeen || 0;
         return lastSeen > fiveMinutesAgo;
       }).length;
       setOnlineUsers(onlineCount);
-
-      // Calculate total website orders
       setTotalWebsiteOrders(ordersSnap.docs.length);
 
-      // Fetch user's own orders
       if (user?.uid) {
         try {
-          const userOrdersSnap = await getDocs(
-            query(collection(db, 'orders'), where('userId', '==', user.uid))
-          );
+          const userOrdersSnap = await getDocs(query(collection(db, 'orders'), where('userId', '==', user.uid)));
           setUserOrders(userOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        } catch (e) {
-          console.error('orders fetch error:', e);
-        }
+        } catch (e) { console.error('orders fetch error:', e); }
       }
-    } catch (e) {
-      console.error('Dashboard data fetch error:', e);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error('Dashboard data fetch error:', e); }
+    finally { setLoading(false); }
   };
 
   const handlePlatformSelect = (platform) => {
-    setSelectedPlatform(platform);
-    setSelectedCategory(null);
-    setSelectedService(null);
-    setStep('categories');
+    console.log('🎯 Platform Selected:', { 
+      platform: platform.name, 
+      maintenance: platform.maintenance, 
+      isWhitelisted,
+      userEmail: user?.email,
+      willBlock: platform.maintenance && !isWhitelisted,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (platform.maintenance && !isWhitelisted) {
+      console.log('🚫 BLOCKING - Platform in maintenance and user not whitelisted');
+      setBlockedItem({ type: 'platform', name: platform.name });
+      return;
+    }
+    
+    console.log('✅ ALLOWING - Platform access granted');
+    
+    // Expand platform and show categories
+    if (expandedPlatform?.id === platform.id) {
+      setExpandedPlatform(null);
+      setExpandedCategory(null);
+      setSelectedPlatform(null);
+      setSelectedCategory(null);
+      setStep('platforms');
+    } else {
+      setExpandedPlatform(platform);
+      setSelectedPlatform(platform);
+      setExpandedCategory(null);
+      setSelectedCategory(null);
+      setStep('categories');
+    }
   };
 
   const handleCategorySelect = (category) => {
+    console.log('📂 Category Selected:', {
+      category: category.name,
+      maintenance: category.maintenance,
+      isWhitelisted,
+      userEmail: user?.email,
+      willBlock: category.maintenance && !isWhitelisted,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (category.maintenance && !isWhitelisted) {
+      console.log('🚫 BLOCKING - Category in maintenance and user not whitelisted');
+      setBlockedItem({ type: 'category', name: category.name });
+      return;
+    }
+    
+    console.log('✅ ALLOWING - Category access granted, showing services in same area');
+    
+    // Show services in the same area (not panel)
     setSelectedCategory(category);
-    setSelectedService(null);
     setStep('services');
   };
 
   const handleServiceSelect = (service) => {
+    console.log('🔧 Service Selected:', {
+      service: service.name,
+      maintenance: service.maintenance,
+      isWhitelisted,
+      userEmail: user?.email,
+      willBlock: service.maintenance && !isWhitelisted,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (service.maintenance && !isWhitelisted) {
+      console.log('🚫 BLOCKING - Service in maintenance and user not whitelisted');
+      setBlockedItem({ type: 'service', name: service.name });
+      return;
+    }
+    
+    console.log('✅ ALLOWING - Either not in maintenance or user is whitelisted');
+    
     setSelectedService(service);
     setOrderData({ link: '', quantity: service.minQuantity || '', comments: '' });
   };
@@ -399,110 +548,57 @@ function DashboardContent() {
       toast.error(`Quantity must be between ${selectedService.minQuantity} and ${selectedService.maxQuantity}`);
       return;
     }
-
     const totalCharge = parseFloat(calculatePrice());
-
-    // Check balance
     const currentBalance = parseFloat(userProfile?.walletBalance || 0);
     if (currentBalance < totalCharge) {
       toast.error(`Insufficient balance. You need ${format(totalCharge)} but have ${format(currentBalance)}`);
       return;
     }
-
     setOrderLoading(true);
     try {
-      // 1. Send order to provider if service has providerServiceId
       let providerOrderId = null;
       let providerName = null;
-
       if (selectedService.providerServiceId && selectedService.providerId) {
         try {
-          // Get provider details from Firestore
           const providerSnap = await getDoc(doc(db, 'providers', selectedService.providerId));
           if (providerSnap.exists()) {
             const provider = providerSnap.data();
             providerName = provider.name;
-
-            // Send order to provider via Cloudflare Worker proxy
             const proxyRes = await fetch('https://smm-proxy.ms8347750.workers.dev', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                apiUrl: provider.apiUrl,
-                apiKey: provider.apiKey,
-                action: 'add',
-                service: selectedService.providerServiceId,
-                link: orderData.link,
-                quantity: qty,
-              }),
+              body: JSON.stringify({ apiUrl: provider.apiUrl, apiKey: provider.apiKey, action: 'add', service: selectedService.providerServiceId, link: orderData.link, quantity: qty }),
             });
             const proxyResult = await proxyRes.json();
-
-            if (proxyResult.success && proxyResult.data?.order) {
-              providerOrderId = proxyResult.data.order;
-            } else if (proxyResult.data?.error) {
-              throw new Error(`Provider error: ${proxyResult.data.error}`);
-            }
+            if (proxyResult.success && proxyResult.data?.order) providerOrderId = proxyResult.data.order;
+            else if (proxyResult.data?.error) throw new Error(`Provider error: ${proxyResult.data.error}`);
           }
         } catch (providerErr) {
-          // If provider fails, still save order as pending for manual processing
           console.error('Provider order error:', providerErr.message);
           toast.error(`Provider error: ${providerErr.message}. Order saved as pending.`);
         }
       }
-
-      // 2. Save order in Firestore
       await addDoc(collection(db, 'orders'), {
-        userId: user.uid,
-        userEmail: user.email,
-        serviceId: selectedService.id,
-        serviceName: selectedService.name,
-        platformId: selectedPlatform?.id,
-        platformName: selectedPlatform?.name,
-        categoryId: selectedCategory?.id,
-        categoryName: selectedCategory?.name,
-        providerId: selectedService.providerId || null,
-        providerName: providerName,
-        providerServiceId: selectedService.providerServiceId || null,
-        providerOrderId: providerOrderId,
-        link: orderData.link,
-        quantity: qty,
-        charge: totalCharge,
-        comments: orderData.comments || '',
-        cancelSupported: selectedService.cancelSupported || false,
-        refillSupported: selectedService.refillSupported || false,
-        refillPeriodDays: parseInt(selectedService.refillPeriodDays || 30),
-        status: providerOrderId ? 'processing' : 'pending',
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        userId: user.uid, userEmail: user.email, serviceId: selectedService.serviceId, serviceName: selectedService.name,
+        platformId: selectedPlatform?.id, platformName: selectedPlatform?.name, categoryId: selectedCategory?.id, categoryName: selectedCategory?.name,
+        providerId: selectedService.providerId || null, providerName, providerServiceId: selectedService.providerServiceId || null, providerOrderId,
+        link: orderData.link, quantity: qty, charge: totalCharge, comments: orderData.comments || '',
+        cancelSupported: selectedService.cancelSupported || false, refillSupported: selectedService.refillSupported || false,
+        refillPeriodDays: parseInt(selectedService.refillPeriodDays || 30), status: providerOrderId ? 'processing' : 'pending',
+        createdAt: new Date(), updatedAt: new Date(),
       });
-
-      // 2. Deduct balance from user document
       const userRef = doc(db, 'users', user.uid);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
         const newBalance = parseFloat((userSnap.data().walletBalance || 0) - totalCharge).toFixed(4);
-        await updateDoc(userRef, {
-          walletBalance: parseFloat(newBalance),
-          totalOrders: (userSnap.data().totalOrders || 0) + 1,
-          totalSpent: parseFloat(((userSnap.data().totalSpent || 0) + totalCharge).toFixed(4)),
-        });
+        await updateDoc(userRef, { walletBalance: parseFloat(newBalance), totalOrders: (userSnap.data().totalOrders || 0) + 1, totalSpent: parseFloat(((userSnap.data().totalSpent || 0) + totalCharge).toFixed(4)) });
       }
-
-      toast.success(providerOrderId
-        ? `Order placed on ${providerName}! ID: ${providerOrderId}. ${format(totalCharge)} deducted.`
-        : `Order saved! ${format(totalCharge)} deducted. Processing manually.`
-      );
+      toast.success(providerOrderId ? `Order placed on ${providerName}! ID: ${providerOrderId}. ${format(totalCharge)} deducted.` : `Order saved! ${format(totalCharge)} deducted. Processing manually.`);
       setSelectedService(null);
       setOrderData({ link: '', quantity: '', comments: '' });
-      // Refresh user profile to show updated balance
       window.location.reload();
-    } catch (err) {
-      console.error(err);
-      toast.error(err.message || 'Failed to place order');
-    } finally {
-      setOrderLoading(false);
-    }
+    } catch (err) { console.error(err); toast.error(err.message || 'Failed to place order'); }
+    finally { setOrderLoading(false); }
   };
 
   if (authLoading) return <PageLoader />;
@@ -518,277 +614,336 @@ function DashboardContent() {
     );
   }
 
-  return (
-    <div className="min-h-screen py-8">
-      <div className="container-custom">
+  // Show maintenance block screen - same design as global maintenance mode
+  if (blockedItem) {
+    let blockedName = blockedItem.name;
+    if (blockedItem.type === 'platform') blockedName = `Platform "${blockedItem.name}"`;
+    else if (blockedItem.type === 'category') blockedName = `Category "${blockedItem.name}"`;
+    else if (blockedItem.type === 'service') blockedName = `Service "${blockedItem.name}"`;
+    return (
+      <div className="min-h-screen bg-dark-50 dark:bg-dark-950 flex items-center justify-center px-4">
+        <div className="text-center max-w-2xl">
+          <div className="mb-8">
+            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center mx-auto mb-6 animate-pulse">
+              <FiTool className="text-white text-6xl" />
+            </div>
+            <h1 className="text-5xl md:text-6xl font-bold text-dark-900 dark:text-white mb-4">
+              Under Maintenance
+            </h1>
+            <p className="text-xl text-dark-600 dark:text-dark-300 mb-4">
+              <span className="font-bold text-yellow-500">{blockedName}</span> is currently under maintenance.
+            </p>
+            <p className="text-lg text-dark-500 dark:text-dark-400 mb-8">
+              We're performing maintenance to improve your experience. Please check back soon!
+            </p>
+            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-xl bg-yellow-100 dark:bg-yellow-500/10 border border-yellow-500/30 mb-8">
+              <span className="flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-yellow-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+              </span>
+              <span className="text-yellow-700 dark:text-yellow-400 font-semibold">
+                We'll be back shortly
+              </span>
+            </div>
+          </div>
+          <div className="glass-card p-6 max-w-md mx-auto">
+            <h3 className="font-bold text-dark-900 dark:text-white mb-3">Want to try something else?</h3>
+            <p className="text-sm text-dark-600 dark:text-dark-400 mb-4">
+              Select a different platform or browse other available services.
+            </p>
+            <button
+              onClick={() => setBlockedItem(null)}
+              className="w-full px-8 py-5 rounded-2xl bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white font-bold text-xl shadow-xl hover:shadow-2xl hover:shadow-primary-500/30 transition-all hover:scale-105"
+            >
+              Back to Platforms
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-        {/* Header with tabs */}
+  return (
+    <div className="min-h-screen py-6">
+      <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-dark-900 dark:text-white mb-1">Dashboard</h1>
-            <p className="text-dark-500 dark:text-dark-400 text-sm">Manage your orders and explore services</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+            <p className="text-gray-400 dark:text-gray-500 text-sm mt-0.5">Manage your orders and explore services</p>
           </div>
-          {/* Tab navigation */}
-          <div className="flex items-center gap-2 bg-dark-100 dark:bg-dark-800 p-1 rounded-xl">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-700 text-dark-900 dark:text-white shadow-sm transition-all"
-            >
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#1e3050] p-1 rounded-xl">
+            <Link href="/dashboard" className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-[#253a5e] text-gray-900 dark:text-white shadow-sm transition-all">
               <FiShoppingBag className="text-primary-500" /> Order
             </Link>
-            <Link
-              href="/dashboard/services"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-dark-500 dark:text-dark-400 hover:text-dark-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-dark-700/50 transition-all"
-            >
-              <FiList className="text-purple-500" /> Services
+            <Link href="/dashboard/services" className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-400 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-[#253a5e]/50 transition-all">
+              <FiList className="text-gray-400" /> Services
             </Link>
           </div>
         </div>
 
-        {/* Stats — 6 cards with separate action buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
-          {/* User Balance */}
-          <div className="glass-card p-5 group hover:shadow-lg hover:shadow-primary-500/10 transition-all duration-300 border border-primary-200/50 dark:border-primary-500/20">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0">
-                <FiDollarSign className="text-lg text-white" />
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+          {/* Balance */}
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-blue">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30">
+                <FiDollarSign className="text-white" size={18} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-dark-500 dark:text-dark-400 font-medium">Balance</p>
-                <p className="text-lg font-bold text-dark-900 dark:text-white truncate">{displayBalance(userProfile?.walletBalance || 0)}</p>
-              </div>
+              <p className="text-xs text-gray-400 font-medium">Balance</p>
             </div>
-            <Link
-              href="/dashboard/add-funds"
-              className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold
-                bg-primary-500 hover:bg-primary-600 text-white
-                transition-all duration-200 hover:shadow-md text-center"
-            >
-              Add Funds
-            </Link>
+            <p className="text-lg font-bold text-gray-900 dark:text-white truncate mb-3">{displayBalance(userProfile?.walletBalance || 0)}</p>
+            <Link href="/dashboard/add-funds" className="flex items-center justify-center gap-1 w-full py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md shadow-blue-600/20">+ Add Funds</Link>
           </div>
-
-          {/* User Orders */}
-          <div className="glass-card p-5 group hover:shadow-lg hover:shadow-green-500/10 transition-all duration-300 border border-green-200/50 dark:border-green-500/20">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center flex-shrink-0">
-                <FiShoppingBag className="text-lg text-white" />
+          {/* Orders */}
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-emerald">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/30">
+                <FiShoppingBag className="text-white" size={18} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-dark-500 dark:text-dark-400 font-medium">My Orders</p>
-                <p className="text-lg font-bold text-dark-900 dark:text-white">{userOrders.length}</p>
-              </div>
+              <p className="text-xs text-gray-400 font-medium">My Orders</p>
             </div>
-            <Link
-              href="/dashboard/orders"
-              className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold
-                bg-green-500 hover:bg-green-600 text-white
-                transition-all duration-200 hover:shadow-md text-center"
-            >
-              View
-            </Link>
+            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{userOrders.length}</p>
+            <Link href="/dashboard/orders" className="flex items-center justify-center gap-1 w-full py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-md shadow-emerald-600/20">View</Link>
           </div>
-
           {/* Services */}
-          <div className="glass-card p-5 group hover:shadow-lg hover:shadow-purple-500/10 transition-all duration-300 border border-purple-200/50 dark:border-purple-500/20">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center flex-shrink-0">
-                <FiPackage className="text-lg text-white" />
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-violet">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center shadow-lg shadow-violet-600/30">
+                <FiPackage className="text-white" size={18} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-dark-500 dark:text-dark-400 font-medium">Services</p>
-                <p className="text-lg font-bold text-dark-900 dark:text-white">{services.length}</p>
-              </div>
+              <p className="text-xs text-gray-400 font-medium">Services</p>
             </div>
-            <Link
-              href="/dashboard/services"
-              className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold
-                bg-purple-500 hover:bg-purple-600 text-white
-                transition-all duration-200 hover:shadow-md text-center"
-            >
-              Browse
-            </Link>
+            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{services.length}</p>
+            <Link href="/dashboard/services" className="flex items-center justify-center gap-1 w-full py-2 rounded-lg text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white transition-all shadow-md shadow-violet-600/20">Browse</Link>
           </div>
-
-          {/* Total Users */}
-          <div className="glass-card p-5 group hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300 border border-blue-200/50 dark:border-blue-500/20">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
-                <span className="text-lg">👥</span>
+          {/* Users */}
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-sky">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shadow-lg shadow-sky-600/30">
+                <FiUsers className="text-white" size={18} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-dark-500 dark:text-dark-400 font-medium">Total Users</p>
-                <p className="text-lg font-bold text-dark-900 dark:text-white">{totalUsers.toLocaleString()}</p>
-              </div>
+              <p className="text-xs text-gray-400 font-medium">Total Users</p>
             </div>
-            <div className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-center">
-              Registered
-            </div>
+            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{totalUsers.toLocaleString()}</p>
+            <div className="flex items-center justify-center w-full py-2 rounded-lg text-xs font-bold bg-sky-600/15 text-sky-400">Registered</div>
           </div>
-
-          {/* Online Users */}
-          <div className="glass-card p-5 group hover:shadow-lg hover:shadow-green-500/20 transition-all duration-300 border border-green-200/50 dark:border-green-500/20 relative overflow-hidden">
-            {/* Animated background pulse */}
-            <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-            
-            <div className="flex items-center gap-2 mb-3 relative z-10">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center flex-shrink-0 relative">
-                {/* Multiple pulsing rings */}
-                <span className="absolute inline-flex h-full w-full rounded-xl bg-green-400 opacity-75 animate-ping"></span>
-                <span className="absolute inline-flex h-10 w-10 rounded-xl bg-green-500 opacity-50 animate-pulse"></span>
-                
-                {/* Users icon instead of dot */}
-                <FiUsers className="text-white text-lg relative z-10" />
-                
-                {/* Small blinking indicator */}
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-white shadow-lg"></span>
+          {/* Online */}
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-green">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/30 relative">
+                <FiUsers className="text-white" size={18} />
+                <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400"></span>
                 </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-dark-500 dark:text-dark-400 font-medium">Online Users</p>
-                <p className="text-lg font-bold text-dark-900 dark:text-white">{onlineUsers.toLocaleString()}</p>
-              </div>
+              <p className="text-xs text-gray-400 font-medium">Online Users</p>
             </div>
-            <div className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 text-center relative z-10 flex items-center justify-center gap-2">
-              <span className="flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-              </span>
+            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{onlineUsers.toLocaleString()}</p>
+            <div className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-bold bg-green-600/15 text-green-400">
+              <span className="flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400"></span></span>
               Active Now
             </div>
           </div>
-
-          {/* Total Website Orders */}
-          <div className="glass-card p-5 group hover:shadow-lg hover:shadow-orange-500/10 transition-all duration-300 border border-orange-200/50 dark:border-orange-500/20">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center flex-shrink-0">
-                <span className="text-lg">📊</span>
+          {/* Total Orders */}
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-orange">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
+                <span className="text-base">📊</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-dark-500 dark:text-dark-400 font-medium">Total Orders</p>
-                <p className="text-lg font-bold text-dark-900 dark:text-white">{totalWebsiteOrders.toLocaleString()}</p>
-              </div>
+              <p className="text-xs text-gray-400 font-medium">Total Orders</p>
             </div>
-            <div className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 text-center">
-              Website
-            </div>
+            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{totalWebsiteOrders.toLocaleString()}</p>
+            <div className="flex items-center justify-center w-full py-2 rounded-lg text-xs font-bold bg-orange-500/15 text-orange-400">Website</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left: Browse */}
-          <div className="lg:col-span-2">
-            <div className="glass-card p-6">
-              {/* Title with animated gradient */}
-              <h2 className="text-xl font-bold mb-6 relative">
-                {step === 'platforms' && (
-                  <span className="bg-gradient-to-r from-primary-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient-x bg-[length:200%_auto]">
-                    ✨ Choose a Platform
-                  </span>
-                )}
-                {step === 'categories' && <span className="text-dark-900 dark:text-white">{selectedPlatform?.name} — Choose a Category</span>}
-                {step === 'services' && <span className="text-dark-900 dark:text-white">{selectedCategory?.name} Services</span>}
-              </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            {/* Show Platform + Categories only when NOT showing services */}
+            {step !== 'services' && (
+              <>
+                {/* Platforms Section */}
+                <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-6 border border-gray-100 dark:border-[#253a5e]">
+                  <div className="flex items-center gap-3 mb-5">
+                    {expandedPlatform && (
+                      <button onClick={() => { setExpandedPlatform(null); setExpandedCategory(null); setSelectedPlatform(null); setSelectedCategory(null); setStep('platforms'); }} className="flex items-center justify-center w-8 h-8 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72] transition-all">
+                        <FiArrowLeft size={16} />
+                      </button>
+                    )}
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                        {!expandedPlatform ? 'Choose a Platform' : `${expandedPlatform.name}`}
+                      </h2>
+                      {expandedPlatform && (
+                        <p className="text-sm text-gray-400 mt-0.5">Select a category below</p>
+                      )}
+                    </div>
+                  </div>
 
-              {loading ? (
-                <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-              ) : step === 'platforms' ? (
-                <PlatformGrid platforms={platforms} onSelect={handlePlatformSelect} />
-              ) : step === 'categories' ? (
-                <CategoryGrid
-                  platform={selectedPlatform}
-                  categories={categories}
-                  onSelect={handleCategorySelect}
-                  onBack={() => { setStep('platforms'); setSelectedPlatform(null); }}
+                  {loading ? (
+                    <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+                  ) : (
+                    <PlatformGrid platforms={platforms} onSelect={handlePlatformSelect} expandedId={expandedPlatform?.id} />
+                  )}
+                </div>
+
+                {/* Categories Section - FIRST (Below Selected Platform) */}
+                {expandedPlatform && (
+                  <div className="relative rounded-3xl p-6 border-2 shadow-2xl overflow-hidden animate-slide-up-fade"
+                    style={{
+                      background: `linear-gradient(135deg, ${expandedPlatform.color || '#1A6BBD'}08, ${expandedPlatform.color || '#1A6BBD'}03)`,
+                      borderColor: `${expandedPlatform.color || '#1A6BBD'}30`
+                    }}>
+                    {/* Animated Background Pattern */}
+                    <div className="absolute inset-0 opacity-5">
+                      <div className="absolute inset-0" 
+                        style={{
+                          backgroundImage: `radial-gradient(circle at 2px 2px, ${expandedPlatform.color || '#1A6BBD'} 1px, transparent 0)`,
+                          backgroundSize: '40px 40px'
+                        }}></div>
+                    </div>
+
+                    {/* Glowing Orbs */}
+                    <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl opacity-20"
+                      style={{ background: `radial-gradient(circle, ${expandedPlatform.color || '#1A6BBD'} 0%, transparent 70%)` }}
+                    ></div>
+                    <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full blur-3xl opacity-15"
+                      style={{ background: `radial-gradient(circle, ${expandedPlatform.color || '#1A6BBD'} 0%, transparent 70%)` }}
+                    ></div>
+
+                    {/* Header */}
+                    <div className="relative z-10 flex items-center gap-3 mb-6">
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-xl transition-transform duration-300 hover:scale-110 hover:rotate-12" 
+                        style={{ 
+                          backgroundColor: expandedPlatform.color || '#274C75',
+                          boxShadow: `0 8px 24px -4px ${expandedPlatform.color || '#274C75'}60`
+                        }}>
+                        <FiPackage className="text-white" size={22} />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-200 bg-clip-text text-transparent">
+                          Choose Category
+                        </h2>
+                        <p className="text-sm font-medium mt-0.5"
+                          style={{ color: expandedPlatform.color || '#6b7280' }}>
+                          Select service type for {expandedPlatform.name}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Categories Grid */}
+                    <div className="relative z-10">
+                      {loading ? (
+                        <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+                      ) : (
+                        <CategoryGrid 
+                          platform={expandedPlatform} 
+                          categories={categories} 
+                          onSelect={handleCategorySelect} 
+                          expandedId={expandedCategory?.id} 
+                        />
+                      )}
+                    </div>
+
+                    {/* Bottom Shine Effect */}
+                    <div className="absolute bottom-0 left-0 right-0 h-px"
+                      style={{
+                        background: `linear-gradient(90deg, transparent, ${expandedPlatform.color || '#1A6BBD'}80, transparent)`
+                      }}
+                    ></div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Show Services when step is 'services' */}
+            {step === 'services' && selectedCategory && expandedPlatform && (
+              <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-6 border border-gray-100 dark:border-[#253a5e]">
+                {/* Back Button & Breadcrumb */}
+                <div className="flex items-center gap-3 mb-6">
+                  <button 
+                    onClick={() => {
+                      setSelectedCategory(null);
+                      setSelectedService(null);
+                      setStep('categories');
+                    }}
+                    className="flex items-center justify-center w-10 h-10 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72] transition-all shadow-md"
+                  >
+                    <FiArrowLeft size={20} />
+                  </button>
+                  <div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
+                      {expandedPlatform.icon && <img src={expandedPlatform.icon} alt={expandedPlatform.name} className="w-4 h-4 rounded object-contain" />}
+                      <span>{expandedPlatform.name}</span>
+                      <FiChevronRight size={12} />
+                      {selectedCategory.icon && <img src={selectedCategory.icon} alt={selectedCategory.name} className="w-4 h-4 rounded object-contain" />}
+                      <span className="font-semibold text-gray-900 dark:text-white">{selectedCategory.name}</span>
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                      Choose a Service
+                    </h2>
+                  </div>
+                </div>
+
+                {/* Services List */}
+                <ServicesList 
+                  platform={expandedPlatform} 
+                  category={selectedCategory} 
+                  services={services} 
+                  onBack={() => {
+                    setSelectedCategory(null);
+                    setSelectedService(null);
+                    setStep('categories');
+                  }} 
+                  selectedService={selectedService} 
+                  onServiceSelect={handleServiceSelect} 
+                  format={format} 
                 />
-              ) : (
-                <ServicesList
-                  platform={selectedPlatform}
-                  category={selectedCategory}
-                  services={services}
-                  onBack={() => { setStep('categories'); setSelectedCategory(null); setSelectedService(null); }}
-                  selectedService={selectedService}
-                  onServiceSelect={handleServiceSelect}
-                  format={format}
-                />
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Right: Order form */}
+          {/* Remove Services Slide-in Panel - services now show in main area */}
+
           <div className="lg:col-span-1">
-            <div className="glass-card p-6 sticky top-24">
-              <h2 className="text-xl font-bold text-dark-900 dark:text-white mb-4">Place Order</h2>
+            <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-6 border border-gray-100 dark:border-[#253a5e] sticky top-24">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Place Order</h2>
 
               {selectedService ? (
                 <form onSubmit={handleOrderSubmit} className="space-y-4">
-                  {/* Selected service name badge */}
                   <div className="p-3 rounded-xl bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30">
                     <p className="text-xs text-primary-500 font-semibold mb-0.5">{selectedPlatform?.name} → {selectedCategory?.name}</p>
                     <p className="font-semibold text-sm text-dark-900 dark:text-white leading-tight">{selectedService.name}</p>
-                    {selectedService.serviceId && (
-                      <span className="inline-block mt-1 text-xs font-mono font-bold bg-dark-200 dark:bg-dark-700 text-dark-600 dark:text-dark-400 px-2 py-0.5 rounded-lg">
-                        #{selectedService.serviceId}
-                      </span>
-                    )}
+                    {selectedService.serviceId && <span className="inline-block mt-1 text-xs font-mono font-bold bg-dark-200 dark:bg-dark-700 text-dark-600 dark:text-dark-400 px-2 py-0.5 rounded-lg">#{selectedService.serviceId}</span>}
                   </div>
 
-                  {/* Service Description */}
                   {selectedService.description && (
                     <div className="p-3 rounded-xl bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
                       <p className="text-xs font-semibold text-dark-500 dark:text-dark-400 mb-2">Service Description:</p>
-                      <div className="text-xs text-dark-700 dark:text-dark-300 space-y-1">
-                        {selectedService.description.split('\n').map((line, idx) => (
-                          <p key={idx} className="leading-relaxed">{line}</p>
-                        ))}
+                      <div className="text-xs text-dark-700 dark:text-dark-300 whitespace-pre-line leading-relaxed">
+                        {selectedService.description}
                       </div>
                     </div>
                   )}
 
                   <div>
                     <label className="label">Target Link *</label>
-                    <input type="url" required placeholder="https://instagram.com/username"
-                      value={orderData.link} onChange={(e) => setOrderData({ ...orderData, link: e.target.value })}
-                      className="input" />
+                    <input type="url" required placeholder="https://instagram.com/username" value={orderData.link} onChange={(e) => setOrderData({ ...orderData, link: e.target.value })} className="input" />
                   </div>
 
                   <div>
                     <label className="label">Quantity * (Min: {selectedService.minQuantity} — Max: {selectedService.maxQuantity})</label>
-                    <input type="number" required
-                      min={selectedService.minQuantity} max={selectedService.maxQuantity}
-                      value={orderData.quantity} 
-                      onChange={(e) => setOrderData({ ...orderData, quantity: e.target.value })}
-                      className="input"
-                      disabled={selectedService.customCommentsRequired} />
-                    {selectedService.customCommentsRequired && (
-                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1 font-medium">
-                        ⚠️ Quantity is auto-calculated from number of lines in custom comments below
-                      </p>
-                    )}
+                    <input type="number" required min={selectedService.minQuantity} max={selectedService.maxQuantity} value={orderData.quantity} onChange={(e) => setOrderData({ ...orderData, quantity: e.target.value })} className="input" disabled={selectedService.customCommentsRequired} />
+                    {selectedService.customCommentsRequired && <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1 font-medium">⚠️ Quantity is auto-calculated from number of lines in custom comments below</p>}
                   </div>
 
                   {selectedService.customCommentsRequired && (
                     <div>
                       <label className="label">Custom Comments * (Each line = 1 quantity)</label>
-                      <textarea
-                        required
-                        rows="5"
-                        placeholder="Enter one item per line. Example:&#10;username1&#10;username2&#10;username3&#10;&#10;Total quantity will be 3"
-                        value={orderData.comments}
-                        onChange={(e) => {
-                          const text = e.target.value;
-                          // Count non-empty lines
-                          const lines = text.split('\n').filter(line => line.trim() !== '');
-                          const lineCount = lines.length || (text.trim() ? 1 : 0);
-                          setOrderData({ ...orderData, comments: text, quantity: lineCount.toString() });
-                        }}
-                        className="input resize-none font-mono text-sm"
-                      />
-                      <p className="text-xs text-dark-500 dark:text-dark-400 mt-1">
-                        Each line = 1 quantity. Current: <span className="font-bold text-primary-600 dark:text-primary-400">{orderData.quantity || 0} item{orderData.quantity !== '1' ? 's' : ''}</span>
-                      </p>
+                      <textarea required rows="5" placeholder="Enter one item per line." value={orderData.comments} onChange={(e) => { const text = e.target.value; const lines = text.split('\n').filter(line => line.trim() !== ''); const lineCount = lines.length || (text.trim() ? 1 : 0); setOrderData({ ...orderData, comments: text, quantity: lineCount.toString() }); }} className="input resize-none font-mono text-sm" />
+                      <p className="text-xs text-dark-500 dark:text-dark-400 mt-1">Each line = 1 quantity. Current: <span className="font-bold text-primary-600 dark:text-primary-400">{orderData.quantity || 0} item{orderData.quantity !== '1' ? 's' : ''}</span></p>
                     </div>
                   )}
 
@@ -803,47 +958,23 @@ function DashboardContent() {
                     </div>
                   </div>
 
-                  <button type="submit" disabled={orderLoading} className="btn-primary w-full">
-                    {orderLoading ? 'Placing Order...' : 'Place Order'}
-                  </button>
-                  <button type="button" onClick={() => setSelectedService(null)} className="btn-outline w-full text-sm">
-                    Clear Selection
-                  </button>
-                  <Link href="/dashboard/orders" className="btn-outline w-full flex items-center justify-center gap-2 text-sm">
-                    View My Orders <FiArrowRight />
-                  </Link>
+                  <button type="submit" disabled={orderLoading} className="btn-primary w-full">{orderLoading ? 'Placing Order...' : 'Place Order'}</button>
+                  <button type="button" onClick={() => setSelectedService(null)} className="btn-outline w-full text-sm">Clear Selection</button>
+                  <Link href="/dashboard/orders" className="btn-outline w-full flex items-center justify-center gap-2 text-sm">View My Orders <FiArrowRight /></Link>
                 </form>
               ) : (
-                /* Default state: Instagram Flag warning */
                 <div className="space-y-4">
-                  {/* Instruction GIF */}
                   <div className="rounded-xl overflow-hidden border border-dark-200 dark:border-dark-700">
-                    <img
-                      src="/images/instagram fix.gif"
-                      alt="How to disable Instagram Flag for Review"
-                      className="w-full h-auto object-contain"
-                    />
+                    <img src="/images/instagram fix.gif" alt="How to disable Instagram Flag for Review" className="w-full h-auto object-contain" />
                   </div>
-
-                  {/* Warning description */}
                   <div className="rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 p-4 space-y-3 text-xs leading-relaxed text-dark-700 dark:text-dark-300">
-                    <p className="font-bold text-sm text-red-600 dark:text-red-400">
-                      🚫 Important: Instagram Flag Must Be Off!
-                    </p>
-                    <p>
-                      Starting from 2024-08-18, with Instagram's new update, the <strong>FLAG</strong> function must be turned off to receive followers.
-                    </p>
-                    <p className="italic">
-                      If this option remains enabled, followers will be sent as requests, and you will need to manually approve each one.
-                    </p>
-
+                    <p className="font-bold text-sm text-red-600 dark:text-red-400">🚫 Important: Instagram Flag Must Be Off!</p>
+                    <p>Starting from 2024-08-18, with Instagram's new update, the <strong>FLAG</strong> function must be turned off to receive followers.</p>
+                    <p className="italic">If this option remains enabled, followers will be sent as requests, and you will need to manually approve each one.</p>
                     <div className="border-t border-red-200 dark:border-red-800/40 pt-3">
                       <p className="font-bold text-red-600 dark:text-red-400 mb-1">❗ Important Note:</p>
-                      <p>
-                        If the Flag function is left <strong>ON</strong>, your account may be treated as Private, and SmmCloud will not be responsible or provide any warranty for the service.
-                      </p>
+                      <p>If the Flag function is left <strong>ON</strong>, your account may be treated as Private, and SmmCloud will not be responsible or provide any warranty for the service.</p>
                     </div>
-
                     <div className="border-t border-red-200 dark:border-red-800/40 pt-3">
                       <p className="font-bold mb-2">To disable the flag function, follow these steps on Instagram:</p>
                       <ol className="list-decimal list-inside space-y-1 pl-1">
@@ -852,7 +983,6 @@ function DashboardContent() {
                         <li>Find the <strong>Flag for Review</strong> option and uncheck it.</li>
                       </ol>
                     </div>
-
                     <div className="border-t border-red-200 dark:border-red-800/40 pt-3 space-y-1">
                       <p className="font-bold text-orange-600 dark:text-orange-400">⚠️ Mandatory:</p>
                       <p>Disabling this feature is required to receive followers correctly.</p>
@@ -860,10 +990,9 @@ function DashboardContent() {
                       <p>If you fail to disable it, SmmCloud cannot guarantee delivery or offer support.</p>
                     </div>
                   </div>
-
                   <p className="text-center text-xs text-dark-400 dark:text-dark-500 pt-1">
-                    {step === 'platforms' ? '← Select a platform to get started' :
-                     step === 'categories' ? '← Select a category to continue' :
+                    {!expandedPlatform ? '← Select a platform to get started' :
+                     !selectedCategory ? '← Select a category to continue' :
                      '← Select a service to place an order'}
                   </p>
                 </div>

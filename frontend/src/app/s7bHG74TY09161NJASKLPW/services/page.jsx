@@ -9,9 +9,8 @@ import { uploadFile } from '@/firebase/storage';
 import { useCurrency } from '@/context/CurrencyContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-// Try direct API first, fallback to proxy
-const USE_DIRECT_API = true; // Set to false to use proxy
-const PROXY_URL = 'https://smm-proxy.ms8347750.workers.dev'; // Cloudflare Worker proxy
+const USE_DIRECT_API = true;
+const PROXY_URL = 'https://smm-proxy.ms8347750.workers.dev';
 
 const inputCls = "w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white placeholder-dark-400 dark:placeholder-dark-500 transition-all";
 const labelCls = "block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2";
@@ -19,23 +18,21 @@ const labelCls = "block text-sm font-semibold text-dark-700 dark:text-dark-300 m
 const EMPTY_FORM = {
   serviceId: '', name: '', platformId: '', categoryId: '',
   providerId: '', providerServiceId: '',
-  price: '', minQuantity: 100, maxQuantity: 100000,
+  price: '', priceUnit: 'per 1000', minQuantity: 100, maxQuantity: 100000,
   avgTime: '1-6 Hours', description: '',
   customCommentsRequired: false,
   isActive: true, isFeatured: false, isPopular: false,
   refillSupported: false, cancelSupported: false, refundSupported: false,
-  image2: '/images/instagram-flag.svg',
+  maintenance: false,
 };
 
-// Browse provider services modal
 function ProviderBrowseModal({ provider, onSelect, onClose }) {
-  // Provider API returns USD, convert to PKR for display
+  const { rates } = useCurrency();
   const formatPKR = (usdAmount) => {
-    const USD_TO_PKR = 278.5;
-    const pkrAmount = parseFloat(usdAmount || 0) * USD_TO_PKR;
+    const pkrAmount = parseFloat(usdAmount || 0) * (rates?.PKR || 278.5);
     return `₨${pkrAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
   };
-  
+
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -46,140 +43,65 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      console.log('=== FETCHING SERVICES ===');
-      console.log('Provider:', provider.name);
-      console.log('API URL:', provider.apiUrl);
-      console.log('API Key (masked):', provider.apiKey ? `${provider.apiKey.substring(0, 8)}...` : 'missing');
-      console.log('Use Direct API:', USE_DIRECT_API);
-      
-      let res;
-      let usingProxy = false;
+      let res; let usingProxy = false;
 
       if (USE_DIRECT_API) {
-        // Try direct API first (works if provider allows CORS)
-        console.log('Attempting direct API call...');
         try {
-          const params = new URLSearchParams({
-            key: provider.apiKey,
-            action: 'services',
-          });
-          
+          const params = new URLSearchParams({ key: provider.apiKey, action: 'services' });
           res = await fetch(`${provider.apiUrl}?${params.toString()}`, {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             signal: AbortSignal.timeout(30000),
           });
-          console.log('Direct API call successful!');
         } catch (directError) {
-          console.warn('Direct API failed, trying proxy:', directError.message);
-          
-          // Fallback to proxy
           usingProxy = true;
           res = await fetch(PROXY_URL, {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              apiUrl: provider.apiUrl,
-              apiKey: provider.apiKey,
-              action: 'services',
-            }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiUrl: provider.apiUrl, apiKey: provider.apiKey, action: 'services' }),
             signal: AbortSignal.timeout(30000),
           });
         }
       } else {
-        // Use proxy by default
-        console.log('Using Cloudflare Worker proxy...');
         usingProxy = true;
         res = await fetch(PROXY_URL, {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            apiUrl: provider.apiUrl,
-            apiKey: provider.apiKey,
-            action: 'services',
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiUrl: provider.apiUrl, apiKey: provider.apiKey, action: 'services' }),
           signal: AbortSignal.timeout(30000),
         });
       }
-      
-      console.log('Using proxy:', usingProxy);
-      console.log('Response status:', res.status);
-      console.log('Response ok:', res.ok);
-      
-      // Get response text to handle any parsing errors
+
       const responseText = await res.text();
-      console.log('Response text sample:', responseText.substring(0, 200));
-      
       let result;
-      try {
-        result = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('JSON Parse Error:', parseError);
-        throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
-      }
-      
-      console.log('Parsed result:', result);
-      
-      // Handle proxy response format vs direct API format
+      try { result = JSON.parse(responseText); }
+      catch (parseError) { throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`); }
+
       let data;
       if (usingProxy) {
-        if (!result.success) {
-          throw new Error(result.error || 'Provider API request failed');
-        }
+        if (!result.success) throw new Error(result.error || 'Provider API request failed');
         data = result.data;
       } else {
-        // Direct API response
-        if (result.error) {
-          throw new Error(`Provider error: ${result.error}`);
-        }
+        if (result.error) throw new Error(`Provider error: ${result.error}`);
         data = result;
       }
-      
-      if (Array.isArray(data)) {
-        if (data.length > 0) {
-          console.log('=== PROVIDER API RESPONSE ===');
-          console.log('Sample service fields:', Object.keys(data[0]));
-          console.log('Full sample service:', data[0]);
-          console.log('Total services loaded:', data.length);
-        } else {
-          console.warn('Provider returned empty services array');
-        }
-        setList(data);
-      } else if (data?.error) {
-        throw new Error(`Provider error: ${data.error}`);
-      } else {
-        console.error('Unexpected data format:', data);
-        throw new Error('Provider returned invalid response format');
-      }
+
+      if (Array.isArray(data)) { setList(data); }
+      else if (data?.error) { throw new Error(`Provider error: ${data.error}`); }
+      else { throw new Error('Provider returned invalid response format'); }
     } catch (e) {
-      console.error('=== LOAD SERVICES ERROR ===');
-      console.error('Error name:', e.name);
-      console.error('Error message:', e.message);
-      console.error('Full error:', e);
-      
       let errorMsg = e.message;
-      
-      // Provide more helpful error messages
       if (e.name === 'TimeoutError' || errorMsg.includes('timeout')) {
-        errorMsg = `Request timeout: ${provider.name} API took too long to respond (>30s). The provider might be slow or down.`;
+        errorMsg = `Request timeout: ${provider.name} API took too long to respond (>30s).`;
       } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('fetch')) {
-        errorMsg = `Network error: Cannot connect to proxy or provider. Possible reasons:\n• Cloudflare Worker might be down\n• Provider API might block direct requests\n• Check your internet connection\n• Provider API URL might be incorrect`;
+        errorMsg = `Network error: Cannot connect to proxy or provider.`;
       } else if (errorMsg.includes('Invalid JSON')) {
-        errorMsg = `${provider.name} API returned invalid data. The provider might be experiencing issues.`;
+        errorMsg = `${provider.name} API returned invalid data.`;
       } else if (errorMsg.includes('CORS')) {
-        errorMsg = `CORS error: Provider API blocked browser request. This requires the Cloudflare Worker proxy to work.`;
+        errorMsg = `CORS error: Provider API blocked browser request.`;
       }
-      
       setError(errorMsg);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const filtered = list.filter(s =>
@@ -247,7 +169,7 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
                     <p className="text-sm font-bold text-primary-600 dark:text-primary-400">{formatPKR(parseFloat(svc.rate||0))}</p>
                     <p className="text-xs text-dark-400">per 1000</p>
                   </div>
-                  <button className="px-3 py-1.5 rounded-lg bg-primary-500 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">Select</button>
+                  <button onClick={(e) => { e.stopPropagation(); onSelect(svc); }} className="px-3 py-1.5 rounded-lg bg-primary-500 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">Select</button>
                 </div>
               ))}
             </div>
@@ -259,14 +181,13 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
 }
 
 export default function ServicesPage() {
-  const { format } = useCurrency(); // Use currency formatting for display
-  
-  // For admin input form - always PKR
+  const { format, rates } = useCurrency();
+
   const formatPKR = (amount) => {
     const num = parseFloat(amount || 0);
     return `₨${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
   };
-  
+
   const [services, setServices] = useState([]);
   const [platforms, setPlatforms] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -291,7 +212,6 @@ export default function ServicesPage() {
         getDocs(collection(db, 'providers')),
       ]);
       setServices(sS.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => {
-        // Sort by serviceId (ascending: 1, 2, 3...)
         const idA = parseInt(a.serviceId) || 0;
         const idB = parseInt(b.serviceId) || 0;
         return idA - idB;
@@ -309,8 +229,22 @@ export default function ServicesPage() {
     e.preventDefault();
     if (!form.platformId) { toast.error('Select a platform'); return; }
     if (!form.categoryId) { toast.error('Select a category'); return; }
+    
+    // Check if Service ID is already used by another service
+    if (form.serviceId && form.serviceId.trim() !== '') {
+      const duplicateService = services.find(
+        svc => svc.serviceId === form.serviceId.trim() && 
+        (!editingService || svc.id !== editingService.id)
+      );
+      if (duplicateService) {
+        toast.error(`Service ID "${form.serviceId}" is already used by "${duplicateService.name}"`);
+        return;
+      }
+    }
+    
     setSaving(true);
     try {
+      if (!editingService && form.maintenance === undefined) form.maintenance = false;
       const data = { ...form, price: parseFloat(form.price)||0, minQuantity: parseInt(form.minQuantity)||100, maxQuantity: parseInt(form.maxQuantity)||100000, updatedAt: Timestamp.now() };
       if (editingService) {
         await updateDoc(doc(db, 'services', editingService.id), data);
@@ -334,6 +268,7 @@ export default function ServicesPage() {
       providerId: svc.providerId||'',
       providerServiceId: svc.providerServiceId||'',
       price: svc.price,
+      priceUnit: svc.priceUnit || 'per 1000',
       minQuantity: svc.minQuantity,
       maxQuantity: svc.maxQuantity,
       avgTime: svc.avgTime||'1-6 Hours',
@@ -346,6 +281,7 @@ export default function ServicesPage() {
       cancelSupported: svc.cancelSupported||false,
       refundSupported: svc.refundSupported||false,
       refundPercent: svc.refundPercent ?? 85,
+      maintenance: !!svc.maintenance,
     });
     setShowModal(true);
   };
@@ -405,7 +341,6 @@ export default function ServicesPage() {
         </div>
       </div>
 
-      {/* Grouped list */}
       <div className="space-y-6">
         {Object.values(grouped).map(({ platform, cats }) => {
           const isExp = expanded[platform.id];
@@ -445,9 +380,8 @@ export default function ServicesPage() {
                         {svcs.length === 0
                           ? <div className="px-6 py-4 text-sm text-dark-400 italic">No services. <button onClick={() => openAdd(platform.id, category.id)} className="text-primary-500 hover:underline">Add one</button></div>
                           : <div className="divide-y divide-dark-100 dark:divide-dark-800">
-                            {svcs.map((svc, idx) => (
+                            {svcs.map((svc) => (
                               <div key={svc.id} className={`flex items-center gap-3 px-6 py-3 hover:bg-dark-50 dark:hover:bg-dark-800/30 transition-colors group ${!svc.isActive ? 'opacity-50' : ''}`}>
-                                {/* Service ID - circular badge, light navy blue */}
                                 <span className="text-sm font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0">
                                   {svc.serviceId}
                                 </span>
@@ -460,6 +394,22 @@ export default function ServicesPage() {
                                     {svc.cancelSupported && <span className="text-blue-500">✕ Cancel</span>}
                                     {svc.isFeatured && <span className="text-yellow-500">★ Featured</span>}
                                     {svc.isPopular && <span className="text-pink-500">🔥 Popular</span>}
+                                    {svc.maintenance && <span className="text-orange-500 font-bold">🔧 Maintenance</span>}
+                                  </div>
+                                  {/* Admin-only: Provider Name & Service ID */}
+                                  <div className="flex items-center gap-3 mt-1 text-xs">
+                                    {svc.providerId && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 font-medium">
+                                        <span className="opacity-60">Provider:</span>
+                                        <span className="font-semibold">{providers.find(p => p.id === svc.providerId)?.name || 'Unknown'}</span>
+                                      </span>
+                                    )}
+                                    {svc.providerServiceId && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 font-mono font-medium">
+                                        <span className="opacity-60">ID:</span>
+                                        <span className="font-bold">{svc.providerServiceId}</span>
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                                 <span className="text-sm font-bold text-primary-600 dark:text-primary-400 flex-shrink-0">{format(parseFloat(svc.price||0))}/1k</span>
@@ -473,14 +423,13 @@ export default function ServicesPage() {
                           </div>}
                       </div>
                     ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
       </div>
 
-      {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -489,7 +438,6 @@ export default function ServicesPage() {
               <button type="button" onClick={() => { setShowModal(false); setForm(EMPTY_FORM); setEditingService(null); }} className="w-8 h-8 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 flex items-center justify-center text-dark-500 text-xl">×</button>
             </div>
             <form onSubmit={handleSave} className="px-6 py-5 space-y-5">
-              {/* Platform + Category */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={labelCls}>Platform *</label>
@@ -507,14 +455,12 @@ export default function ServicesPage() {
                 </div>
               </div>
 
-              {/* Name */}
               <div>
                 <label className={labelCls}>Service Name *</label>
                 <input type="text" required placeholder="e.g., TikTok Followers [100% Real] [Speed: 10K/Day]"
                   value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputCls} />
               </div>
 
-              {/* Service ID */}
               <div>
                 <label className={labelCls}>Service ID <span className="text-xs font-normal text-dark-400 ml-1">(shown to users — e.g. 1, 2, 100, up to 10000)</span></label>
                 <input type="text" placeholder="e.g., 1001" maxLength="5"
@@ -522,7 +468,6 @@ export default function ServicesPage() {
                 <p className="text-xs text-dark-400 mt-1">Service ID can be 1-10000 (shown in circular badge)</p>
               </div>
 
-              {/* Provider + ID + Browse */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={labelCls}>Provider</label>
@@ -548,27 +493,30 @@ export default function ServicesPage() {
                 </div>
               </div>
 
-              {/* Price / Time / Min / Max */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>Price per 1000 (PKR) *</label>
+                  <label className={labelCls}>Price (PKR) *</label>
+                  <input type="number" step="0.0001" required placeholder="100.50"
+                    value={form.price || ''} onChange={e => setForm({ ...form, price: e.target.value })} className={inputCls} />
+                  <p className="text-xs text-dark-400 mt-1">Price in PKR. Will be converted to user's currency.</p>
+                </div>
+                <div>
+                  <label className={labelCls}>Price Unit *</label>
                   <input 
-                    type="number" 
-                    step="0.0001" 
+                    type="text" 
                     required 
-                    placeholder="100.50" 
-                    value={form.price || ''} 
-                    onChange={e => setForm({ ...form, price: e.target.value })} 
+                    placeholder="e.g., per 1000, per 100, per item, each" 
+                    value={form.priceUnit || ''} 
+                    onChange={e => setForm({ ...form, priceUnit: e.target.value })} 
                     className={inputCls} 
                   />
-                  <p className="text-xs text-dark-400 mt-1">
-                    Price in PKR. Will be converted to user's selected currency.
-                  </p>
+                  <p className="text-xs text-dark-400 mt-1">How the price is shown (e.g., "per 1000" or "per view")</p>
                 </div>
                 <div>
                   <label className={labelCls}>Average Time</label>
                   <input type="text" placeholder="1-6 Hours" value={form.avgTime} onChange={e => setForm({ ...form, avgTime: e.target.value })} className={inputCls} />
                 </div>
+                <div></div>
                 <div>
                   <label className={labelCls}>Min Quantity *</label>
                   <input type="number" required value={form.minQuantity} onChange={e => setForm({ ...form, minQuantity: e.target.value })} className={inputCls} />
@@ -589,27 +537,41 @@ export default function ServicesPage() {
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <label className={labelCls}>Description</label>
                 <textarea rows="8" placeholder="Service details, instructions, requirements..." value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={inputCls + ' resize-none'} />
                 <p className="text-xs text-dark-400 mt-1">Add detailed service information. Use line breaks for better formatting.</p>
               </div>
 
-              {/* Feature toggles */}
               <div>
                 <label className={labelCls}>Features</label>
                 <div className="grid grid-cols-3 gap-3">
                   {[['isActive','✓ Active'],['isFeatured','★ Featured'],['isPopular','🔥 Popular'],['refillSupported','↩ Refill'],['cancelSupported','✕ Cancel'],['refundSupported','$ Refund'],['customCommentsRequired','💬 Custom Comments']].map(([key, label]) => (
-                    <button key={key} type="button" onClick={() => setForm({ ...form, [key]: !form[key] })}
-                      className={`py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${form[key] ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/20 text-primary-700 dark:text-primary-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-primary-400'}`}>
+                    <button key={key} type="button" onClick={() => setForm({ ...form, [key]: !form[key ]})}
+                      className={`py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${form[key ] ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/20 text-primary-700 dark:text-primary-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-primary-400'}`}>
                       {label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Actions */}
+              <div className="flex items-center justify-between p-4 rounded-xl bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
+                <div className="flex items-center gap-3">
+                  <span className="text-orange-500 text-xl">🔧</span>
+                  <div>
+                    <p className="font-semibold text-dark-900 dark:text-white text-sm">Maintenance Mode</p>
+                    <p className="text-xs text-dark-500">Non-whitelisted users will see "Under Maintenance" for this service</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, maintenance: !form.maintenance })}
+                  className={`relative inline-flex items-center h-8 w-14 rounded-full transition-colors ${form.maintenance ? 'bg-orange-500' : 'bg-gray-400'}`}
+                >
+                  <span className={`inline-block w-6 h-6 transform bg-white rounded-full transition-transform ${form.maintenance ? 'translate-x-7' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setShowModal(false); setForm(EMPTY_FORM); setEditingService(null); }} disabled={saving}
                   className="flex-1 py-3 rounded-xl border-2 border-dark-200 dark:border-dark-700 text-dark-700 dark:text-dark-300 font-semibold hover:bg-dark-50 dark:hover:bg-dark-800">
@@ -624,47 +586,23 @@ export default function ServicesPage() {
         </div>
       )}
 
-      {/* Browse Provider Modal */}
       {showBrowse && currentProvider && (
         <ProviderBrowseModal
           provider={currentProvider}
           onClose={() => setShowBrowse(false)}
           onSelect={svc => {
-            // Debug: log the service data
-            console.log('Provider service data:', svc);
-            console.log('Raw rate from provider:', svc.rate);
-            console.log('Description from provider:', svc.description);
-            
-            // Detect if this service requires custom comments
-            const requiresCustomComments = svc.type === 'Custom Comments' || 
-                                          (svc.name && svc.name.toLowerCase().includes('custom comment'));
-            
-            // IMPORTANT: Provider returns price in USD per 1000, convert to PKR
-            const USD_TO_PKR = 278.5;
-            const priceInUSD = parseFloat(svc.rate || 0);
-            const priceInPKR = priceInUSD * USD_TO_PKR;
-            console.log('Price conversion: $' + priceInUSD + ' USD → ₨' + priceInPKR.toFixed(4) + ' PKR');
-            
-            // Extract refill period from service name (e.g., "Refill: 365 Days" -> 365)
+            const requiresCustomComments = svc.type === 'Custom Comments' || (svc.name && svc.name.toLowerCase().includes('custom comment'));
+            const priceInPKR = parseFloat(svc.rate || 0) * (rates?.PKR || 278.5);
             let refillPeriodDays = '';
             const refillMatch = svc.name?.match(/refill[:\s]+(\d+)\s*days?/i);
-            if (refillMatch) {
-              refillPeriodDays = refillMatch[1];
-              console.log('Extracted refill period:', refillPeriodDays + ' days');
-            }
-            
-            // Get description - try multiple possible fields from provider
+            if (refillMatch) { refillPeriodDays = refillMatch[1]; }
             const description = svc.description || svc.desc || svc.dripfeed || '';
-            console.log('Final description:', description);
-            
-            // Check if service has refill from the flag or from name
             const hasRefill = svc.refill === true || svc.refill === 'true' || refillMatch;
-            
             setForm(prev => ({
               ...prev,
               name: svc.name || prev.name,
               providerServiceId: String(svc.service),
-              price: priceInPKR.toFixed(4), // Store PKR after converting from USD
+              price: priceInPKR.toFixed(4),
               minQuantity: parseInt(svc.min || 100),
               maxQuantity: parseInt(svc.max || 100000),
               description: description,

@@ -106,23 +106,12 @@ export const initializeUserProfile = async (uid, userData) => {
     const userSnap = await getDoc(userRef);
 
     if (!userSnap.exists()) {
-      // Create new user profile
-      await setDoc(userRef, {
-        uid,
-        email: userData.email,
-        displayName: userData.displayName || '',
-        role: 'user',
-        balance: 0,
-        totalOrders: 0,
-        totalSpent: 0,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      console.log('✅ User profile created:', uid);
+      // Don't auto-create — profile must be created during registration
+      console.warn('⚠️ No user profile found for:', uid);
+      return { data: null, error: 'Profile not found' };
     }
 
-    const updatedSnap = await getDoc(userRef);
-    return { data: { id: updatedSnap.id, ...updatedSnap.data() }, error: null };
+    return { data: { id: userSnap.id, ...userSnap.data() }, error: null };
   } catch (error) {
     console.error('❌ Initialize user profile error:', error);
     return { data: null, error: error.message };

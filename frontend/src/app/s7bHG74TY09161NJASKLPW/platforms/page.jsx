@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiImage, FiUpload, FiX, FiLink } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiImage, FiUpload, FiX, FiLink, FiTool } from 'react-icons/fi';
 
 function IconUpload({ value, onChange }) {
   const inputRef = useRef();
@@ -211,18 +211,30 @@ export default function PlatformsPage() {
   const [form, setForm] = useState({
     name: '',
     icon: '',
-    color: '#6366f1',
+    color: '#1A6BBD',
     description: '',
     isActive: true,
+    maintenance: false,
   });
 
   useEffect(() => { fetchPlatforms(); }, []);
+
+  const fixColors = async (list) => {
+    const purpleColors = ['#6366f1', '#7c3aed', '#8b5cf6', '#a855f7', '#9333ea', '#7e22ce', '#6d28d9', '#1A6BBD'];
+    for (const p of list) {
+      if (purpleColors.includes(p.color) || !p.color) {
+        await updateDoc(doc(db, 'platforms', p.id), { color: '#1A6BBD', updatedAt: Timestamp.now() });
+      }
+    }
+  };
 
   const fetchPlatforms = async () => {
     try {
       const snap = await getDocs(collection(db, 'platforms'));
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setPlatforms(list.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+      const sorted = list.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      setPlatforms(sorted);
+      await fixColors(sorted);
     } catch (e) {
       console.error(e);
     }
@@ -236,7 +248,7 @@ export default function PlatformsPage() {
 
   const openEdit = (p) => {
     setEditingPlatform(p);
-    setForm({ name: p.name, icon: p.icon || '', color: p.color || '#6366f1', description: p.description || '', isActive: p.isActive });
+    setForm({ name: p.name, icon: p.icon || '', color: p.color || '#6366f1', description: p.description || '', isActive: p.isActive, maintenance: !!p.maintenance });
     setShowModal(true);
   };
 
@@ -249,6 +261,7 @@ export default function PlatformsPage() {
     setSaving(true);
     try {
       const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      if (!editingPlatform && form.maintenance === undefined) form.maintenance = false;
       const data = { ...form, slug, updatedAt: Timestamp.now() };
 
       if (editingPlatform) {
@@ -292,9 +305,11 @@ export default function PlatformsPage() {
           <h2 className="text-2xl font-bold text-dark-900 dark:text-white mb-1">Platform Management</h2>
           <p className="text-dark-500 dark:text-dark-400 text-sm">Platforms created here appear on the home page and dashboard</p>
         </div>
-        <button onClick={openAdd} className="btn-primary flex items-center gap-2">
-          <FiPlus /> Add Platform
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={openAdd} className="btn-primary flex items-center gap-2">
+            <FiPlus /> Add Platform
+          </button>
+        </div>
       </div>
 
       {/* Grid */}
@@ -397,16 +412,34 @@ export default function PlatformsPage() {
               </div>
 
               {/* Description */}
-              <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Description</label>
-                <textarea
-                  rows="2"
-                  placeholder="e.g., Followers, Likes, Views, Comments"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white resize-none"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Description</label>
+                  <textarea
+                    rows="2"
+                    placeholder="e.g., Followers, Likes, Views, Comments"
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white resize-none"
+                  />
+                </div>
+
+                {/* Maintenance Mode Toggle */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
+                  <div className="flex items-center gap-3">
+                    <span className="text-orange-500 text-xl">🔧</span>
+                    <div>
+                      <p className="font-semibold text-dark-900 dark:text-white text-sm">Maintenance Mode</p>
+                      <p className="text-xs text-dark-500">Non-whitelisted users will see "Under Maintenance" for this platform</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, maintenance: !form.maintenance })}
+                    className={`relative inline-flex items-center h-8 w-14 rounded-full transition-colors ${form.maintenance ? 'bg-orange-500' : 'bg-gray-400'}`}
+                  >
+                    <span className={`inline-block w-6 h-6 transform bg-white rounded-full transition-transform ${form.maintenance ? 'translate-x-7' : 'translate-x-1'}`} />
+                  </button>
+                </div>
 
               {/* Actions */}
               <div className="flex gap-3 pt-2">

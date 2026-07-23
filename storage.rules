@@ -1,27 +1,33 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Public read access for all files
-    match /{allPaths=**} {
-      allow read: if true;
-    }
-    
-    // Avatars - users can only upload to their own folder
+    // Public read for avatars, accounts, categories images
     match /avatars/{userId}/{allPaths=**} {
+      allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId;
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Accounts - admins only
+    // Accounts - admin only write
     match /accounts/{allPaths=**} {
-      allow write: if request.auth != null;
-      allow delete: if request.auth != null;
+      allow read: if true;
+      allow write, delete: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
     
-    // Categories - admins only
+    // Categories - admin only write
     match /categories/{allPaths=**} {
-      allow write: if request.auth != null;
-      allow delete: if request.auth != null;
+      allow read: if true;
+      allow write, delete: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read: if false;
+      allow write, delete: if false;
     }
   }
 }

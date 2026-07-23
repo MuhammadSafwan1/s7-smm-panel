@@ -8,6 +8,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 // Import rate limiting configurations
 const rateLimitConfigs = require('./middleware/rateLimit');
 const { logIPAccess } = require('./utils/ipUtils');
+const { securityMiddleware } = require('./middleware/security.middleware');
 
 const paymentRoutes = require('./routes/payment.routes');
 const adminRoutes = require('./routes/admin.routes');
@@ -37,8 +38,21 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://*.firebaseapp.com", "https://*.googleapis.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: [
+        "'self'", 
+        "https://*.firebaseapp.com", 
+        "https://*.googleapis.com",
+        "https://*.google.com",
+        "https://securetoken.googleapis.com",
+        "https://identitytoolkit.googleapis.com",
+        "https://firestore.googleapis.com",
+        "https://www.googleapis.com",
+        "https://fcm.googleapis.com",
+        "https://firebase.googleapis.com",
+        "wss://*.firebaseio.com"
+      ],
+      frameSrc: ["'self'", "https://*.firebaseapp.com"],
     },
   },
   hsts: {
@@ -63,6 +77,9 @@ app.use((req, res, next) => {
   logIPAccess(req, 'api_request');
   next();
 });
+
+// Security middleware - MUST be before routes
+app.use(securityMiddleware);
 
 // General rate limiting
 app.use('/api/', rateLimitConfigs.general);

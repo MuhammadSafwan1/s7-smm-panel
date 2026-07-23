@@ -1,16 +1,25 @@
-# MSF SMM Panel - Robots.txt
+# MSF SMM Panel - SEO Optimized robots.txt
+# Allow all search engines to crawl everything
+
 User-agent: *
 Allow: /
-Allow: /dashboard
-Allow: /auth/login
-Allow: /auth/register
-Allow: /policies
-Allow: /help
-
-# Block admin pages from search engines
-Disallow: /s7bHG74TY09161NJASKLPW/
-Disallow: /dashboard/api
-Disallow: /dashboard/settings
 
 # Sitemap location
-Sitemap: https://msfsmm.web.app/sitemap.xml
+Sitemap: https://msfsmm.com/sitemap.xml
+
+# Crawl-delay (optional - helps with slower servers)
+Crawl-delay: 1
+
+# Disallow sensitive pages
+Disallow: /s7bHG74TY09161NJASKLPW/
+Disallow: /api/
+Disallow: /*.json$
+
+# Allow images
+User-agent: Googlebot-Image
+Allow: /*
+
+# Allow JavaScript and CSS
+User-agent: Googlebot
+Allow: /*.js
+Allow: /*.css

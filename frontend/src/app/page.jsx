@@ -1,26 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
-import Head from 'next/head';
+import { useSearchParams } from 'next/navigation';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, query, where, orderBy, doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '@/context/AuthContext';
 import { 
-  FiArrowRight,
   FiShield, 
   FiZap, 
   FiHeadphones, 
   FiDollarSign,
-  FiUsers,
-  FiPackage,
   FiShoppingBag,
-  FiAward
+  FiAward,
+  FiArrowRight,
+  FiUsers,
+  FiPackage
 } from 'react-icons/fi';
 import { motion } from 'framer-motion';
+import AdminPhotoModal from '@/components/common/AdminPhotoModal';
+import SEOHead from '@/components/common/SEOHead';
+import StructuredData from '@/components/common/StructuredData';
 
-export default function HomePage() {
+function HomePageContent() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [platforms, setPlatforms] = useState([]);
   const [loadingPlatforms, setLoadingPlatforms] = useState(true);
   const [topUsers, setTopUsers] = useState([]);
@@ -34,35 +38,49 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [showAdminPhotoModal, setShowAdminPhotoModal] = useState(false);
 
   useEffect(() => {
-    // SEO: Update document title and meta tags
-    document.title = 'MSF SMM Panel - Best SMM Panel for Social Media Growth | Instagram, Facebook, YouTube, TikTok';
+    // Force redirect from .web.app to .com domain
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname.includes('web.app') || hostname.includes('firebaseapp.com')) {
+        const newUrl = window.location.href
+          .replace('msfsmm.web.app', 'msfsmm.com')
+          .replace('msfsmm.firebaseapp.com', 'msfsmm.com');
+        window.location.replace(newUrl);
+        return;
+      }
+    }
+
+    const referralCode = searchParams.get('ref');
+    if (referralCode) {
+      localStorage.setItem('pending_referral', referralCode);
+    }
+
+    // Title is now handled by SEOHead component dynamically
     
-    // Update meta description
     let metaDescription = document.querySelector('meta[name="description"]');
     if (!metaDescription) {
       metaDescription = document.createElement('meta');
       metaDescription.name = 'description';
       document.head.appendChild(metaDescription);
     }
-    metaDescription.content = 'MSF SMM Panel - #1 SMM Panel in Pakistan. Buy Instagram followers, Facebook likes, YouTube views, TikTok followers. Cheapest SMM services with instant delivery. 24/7 support.';
+    metaDescription.content = 'MSF SMM Panel - World\'s #1 Most Trusted Premium SMM Panel founded by Muhammad Safwan. Global leader in social media marketing for Instagram followers, Facebook likes, YouTube views, TikTok followers. 50,000+ satisfied customers worldwide. Cheapest rates, instant delivery, 24/7 support, 100% safe & secure.';
     
-    // Update meta keywords
     let metaKeywords = document.querySelector('meta[name="keywords"]');
     if (!metaKeywords) {
       metaKeywords = document.createElement('meta');
       metaKeywords.name = 'keywords';
       document.head.appendChild(metaKeywords);
     }
-    metaKeywords.content = 'MSF SMM, MSF SMM Panel, SMM panel Pakistan, buy Instagram followers, buy Facebook likes, buy YouTube views, buy TikTok followers, cheapest SMM panel, best SMM panel, social media marketing';
+    metaKeywords.content = 'MSF SMM, MSF SMM Panel, Muhammad Safwan, m.safwan2006, world best SMM panel, globally trusted SMM, international SMM services, buy Instagram followers, buy Facebook likes, buy YouTube views, buy TikTok followers, cheapest SMM panel worldwide, best SMM panel global, social media marketing, Instagram growth, YouTube promotion, TikTok viral, global SMM services, trusted SMM panel founder Muhammad Safwan';
     
-    // Add Open Graph tags for social sharing
     const ogTags = [
-      { property: 'og:title', content: 'MSF SMM Panel - Best SMM Services' },
-      { property: 'og:description', content: 'Buy Instagram, Facebook, YouTube, TikTok services at cheapest rates' },
+      { property: 'og:title', content: 'MSF SMM Panel - World\'s Best SMM Services by Muhammad Safwan' },
+      { property: 'og:description', content: 'World\'s #1 Premium SMM Panel. Buy Instagram, Facebook, YouTube, TikTok services at cheapest rates globally. Founded by Muhammad Safwan.' },
       { property: 'og:type', content: 'website' },
-      { property: 'og:url', content: 'https://msfsmm.web.app' }
+      { property: 'og:url', content: 'https://msfsmm.com' }
     ];
     
     ogTags.forEach(tag => {
@@ -77,13 +95,11 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    // Only fetch once on mount, use cached data for 5 minutes
     const lastFetch = localStorage.getItem('homepageLastFetch');
     const cachedData = localStorage.getItem('homepageData');
     const now = Date.now();
     
     if (cachedData && lastFetch && (now - parseInt(lastFetch)) < 5 * 60 * 1000) {
-      // Use cached data (less than 5 minutes old) - 0 reads!
       try {
         const parsed = JSON.parse(cachedData);
         setPlatforms(parsed.platforms || []);
@@ -95,13 +111,11 @@ export default function HomePage() {
         setLoadingPlatforms(false);
       } catch (error) {
         console.error('Error parsing cached data:', error);
-        // Clear bad cache and fetch fresh
         localStorage.removeItem('homepageData');
         localStorage.removeItem('homepageLastFetch');
         fetchAllData();
       }
     } else {
-      // Fetch fresh data
       fetchAllData();
     }
   }, [retryCount]);
@@ -109,26 +123,24 @@ export default function HomePage() {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      // Fetch admin settings from siteSettings/general (1 READ)
       const settingsDocRef = doc(db, 'siteSettings', 'general');
       const settingsSnap = await getDoc(settingsDocRef);
       let adminSettingsData = null;
       if (settingsSnap.exists()) {
         const data = settingsSnap.data();
         adminSettingsData = {
-          adminName: data.adminName || 'Admin',
+          adminName: data.adminName || 'MSF SMM PANEL',
           adminDescription: data.adminDescription || '',
           adminPhoto: data.adminPhoto || null
         };
       } else {
         adminSettingsData = {
-          adminName: 'MSF SMM Admin',
+          adminName: 'MSF SMM PANEL',
           adminDescription: 'Professional SMM Panel Services',
           adminPhoto: null
         };
       }
 
-      // Fetch platforms
       const platformsSnap = await getDocs(
         query(collection(db, 'platforms'), where('isActive', '==', true))
       );
@@ -137,11 +149,9 @@ export default function HomePage() {
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
       setPlatforms(platformsData);
 
-      // Fetch all users
       const usersSnap = await getDocs(collection(db, 'users'));
       const usersData = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       
-      // Calculate online users (active in last 5 minutes)
       const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
       const onlineCount = usersData.filter(u => {
         if (!u.lastSeen) return false;
@@ -149,13 +159,9 @@ export default function HomePage() {
         return lastSeen > fiveMinutesAgo;
       }).length;
 
-      // Fetch all orders
       const ordersSnap = await getDocs(collection(db, 'orders'));
-      
-      // Fetch all services
       const servicesSnap = await getDocs(collection(db, 'services'));
       
-      // Calculate top 10 users by total orders
       const userOrderCounts = {};
       ordersSnap.docs.forEach(doc => {
         const order = doc.data();
@@ -167,6 +173,9 @@ export default function HomePage() {
       const topUsersData = Object.entries(userOrderCounts)
         .map(([userId, orderCount]) => {
           const userData = usersData.find(u => u.id === userId);
+          if (!userData || userData.banned || userData.disabled || userData.deleted) {
+            return null;
+          }
           return {
             id: userId,
             name: userData?.displayName || userData?.email?.split('@')[0] || 'User',
@@ -175,6 +184,7 @@ export default function HomePage() {
             orderCount
           };
         })
+        .filter(user => user !== null)
         .sort((a, b) => b.orderCount - a.orderCount)
         .slice(0, 10);
 
@@ -191,7 +201,6 @@ export default function HomePage() {
       setAdminSettings(adminSettingsData);
       setDataLoaded(true);
       
-      // Cache ALL data for 5 minutes
       localStorage.setItem('homepageData', JSON.stringify({
         platforms: platformsData,
         topUsers: topUsersData,
@@ -210,7 +219,6 @@ export default function HomePage() {
   };
 
   const handleRetry = () => {
-    console.log('🔄 Manual retry triggered');
     setRetryCount(prev => prev + 1);
     setLoading(true);
   };
@@ -223,11 +231,14 @@ export default function HomePage() {
   ];
 
   return (
-    <div className="bg-dark-50 dark:bg-dark-950 min-h-screen">
-      {/* Debug Panel - Remove after fixing */}
+    <div className="min-h-screen">
+      {/* SEO Components */}
+      <SEOHead />
+      <StructuredData />
+      
       {!dataLoaded && !loading && (
         <div className="fixed bottom-4 right-4 z-50 bg-red-500 text-white p-4 rounded-lg shadow-2xl max-w-sm">
-          <h3 className="font-bold mb-2">⚠️ Data Not Loading</h3>
+          <h3 className="font-bold mb-2">Data Not Loading</h3>
           <p className="text-sm mb-3">Stats: {JSON.stringify(stats)}</p>
           <button onClick={handleRetry} className="bg-white text-red-500 px-4 py-2 rounded font-bold hover:bg-gray-100">
             Retry Loading Data
@@ -236,8 +247,8 @@ export default function HomePage() {
       )}
       
       {/* Hero Section */}
-      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-dark-50 dark:bg-dark-950">
-        <div className="relative container-custom z-10 py-20">
+      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
+        <div className="relative max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 z-10 py-20">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             {/* Left Side: Admin Profile */}
             <motion.div
@@ -247,54 +258,57 @@ export default function HomePage() {
               className="order-2 lg:order-1"
             >
               {adminSettings ? (
-                <div className="relative bg-dark-100 dark:bg-dark-800 rounded-3xl p-8 border-2 border-primary-500 dark:border-primary-600 shadow-2xl shadow-primary-500/20 hover:shadow-primary-500/40 transition-all duration-300">
-                  {/* Glow effect */}
-                  <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary-500/10 to-transparent opacity-50"></div>
-                  
+                <div className="relative bg-white dark:bg-[#1a2742] rounded-3xl p-8 border border-gray-100 dark:border-[#253a5e] shadow-2xl hover:shadow-3xl transition-all duration-300 glow-border glow-border-blue">
                   <div className="relative flex flex-col items-center text-center">
                     {/* Admin Photo */}
-                    <div className="relative mb-6 group">
+                    <div 
+                      className="relative mb-6 group cursor-pointer" 
+                      onClick={() => setShowAdminPhotoModal(true)}
+                    >
                       {adminSettings.adminPhoto ? (
-                        <img
-                          src={adminSettings.adminPhoto}
-                          alt={adminSettings.adminName}
-                          className="w-40 h-40 rounded-3xl object-cover border-4 border-primary-500 dark:border-primary-600 shadow-2xl shadow-primary-500/30 group-hover:scale-105 transition-transform duration-300"
-                        />
+                        <>
+                          <img
+                            src={adminSettings.adminPhoto}
+                            alt={adminSettings.adminName}
+                            className="w-40 h-40 rounded-3xl object-cover border-4 border-blue-500 shadow-2xl shadow-blue-500/30 group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <div className="absolute inset-0 rounded-3xl bg-black/0 group-hover:bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
+                            <span className="text-white text-sm font-bold bg-black/60 px-3 py-1 rounded-full">
+                              Click to View
+                            </span>
+                          </div>
+                        </>
                       ) : (
-                        <div className="w-40 h-40 rounded-3xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-white text-5xl font-bold shadow-2xl shadow-primary-500/30 group-hover:scale-105 transition-transform duration-300">
+                        <div className="w-40 h-40 rounded-3xl bg-blue-600 flex items-center justify-center text-white text-5xl font-bold shadow-2xl shadow-blue-500/30 group-hover:scale-105 transition-transform duration-300">
                           {adminSettings.adminName?.[0] || 'A'}
                         </div>
                       )}
-                      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary-500 to-primary-600 text-white px-5 py-1.5 rounded-full text-sm font-bold shadow-lg animate-pulse">
-                        ✨ Admin
+                      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-5 py-1.5 rounded-full text-sm font-bold shadow-lg">
+                        Admin
                       </div>
                     </div>
 
                     {/* Admin Name */}
-                    <h3 className="text-3xl font-bold bg-gradient-to-r from-primary-500 via-purple-500 to-primary-600 bg-clip-text text-transparent mb-3">
+                    <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
                       {adminSettings.adminName}
                     </h3>
 
                     {/* Admin Description */}
                     {adminSettings.adminDescription && (
-                      <p className="text-dark-700 dark:text-dark-200 text-lg leading-relaxed max-w-md font-medium whitespace-pre-wrap break-words">
+                      <p className="text-gray-600 dark:text-gray-300 text-lg leading-relaxed max-w-md font-medium whitespace-pre-wrap break-words">
                         {adminSettings.adminDescription}
                       </p>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="relative bg-dark-100 dark:bg-dark-800 rounded-3xl p-8 border-2 border-dark-300 dark:border-dark-700">
+                <div className="relative bg-white dark:bg-[#1a2742] rounded-3xl p-8 border border-gray-100 dark:border-[#253a5e]">
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-40 h-40 rounded-3xl bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white text-5xl font-bold animate-pulse mb-6">
+                    <div className="w-40 h-40 rounded-3xl bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-white text-5xl font-bold animate-pulse mb-6">
                       👤
                     </div>
-                    <h3 className="text-2xl font-bold text-dark-900 dark:text-white mb-3">
-                      Admin Profile
-                    </h3>
-                    <p className="text-dark-600 dark:text-dark-400 text-sm">
-                      Loading admin information...
-                    </p>
+                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Admin Profile</h3>
+                    <p className="text-gray-400 dark:text-gray-500 text-sm">Loading admin information...</p>
                   </div>
                 </div>
               )}
@@ -308,29 +322,23 @@ export default function HomePage() {
               className="order-1 lg:order-2 text-center lg:text-left"
             >
               <h1 className="text-5xl md:text-7xl font-bold mb-6">
-                <span className="text-dark-900 dark:text-white">Boost Your </span>
-                <span className="bg-gradient-to-r from-primary-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-                  Social Media
-                </span>
+                <span className="text-gray-900 dark:text-white">Boost Your </span>
+                <span className="text-blue-600 dark:text-blue-400">Social Media</span>
                 <br />
-                <span className="bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500 bg-clip-text text-transparent animate-gradient">
-                  Growth Today
-                </span>
+                <span className="text-green-500 dark:text-green-400">Growth Today</span>
               </h1>
-              <p className="text-xl md:text-2xl text-dark-700 dark:text-dark-200 mb-10 font-medium leading-relaxed">
-                <span className="bg-gradient-to-r from-primary-600 to-purple-600 dark:from-primary-400 dark:to-purple-400 bg-clip-text text-transparent font-bold">
-                  Premium SMM Panel
-                </span> with instant delivery. Get 
-                <span className="text-primary-600 dark:text-primary-400 font-semibold"> followers, likes, views </span>
+              <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-10 font-medium leading-relaxed">
+                <span className="text-blue-600 dark:text-blue-400 font-bold">Premium SMM Panel</span> with instant delivery. Get 
+                <span className="text-blue-600 dark:text-blue-400 font-semibold"> followers, likes, views </span>
                 and more for all major platforms.
               </p>
               
               <div className="flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-4 mb-16">
-                <Link href="/dashboard" className="btn-primary btn-lg inline-flex items-center gap-2 shadow-xl shadow-primary-500/30 hover:shadow-2xl hover:shadow-primary-500/50 transition-all">
+                <Link href="/dashboard" className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xl shadow-blue-600/30 hover:shadow-2xl hover:shadow-blue-600/50 transition-all text-lg">
                   Get Started <FiArrowRight />
                 </Link>
                 {!user && (
-                  <Link href="/auth/register" className="btn-outline btn-lg hover:scale-105 transition-transform">
+                  <Link href="/auth/register" className="inline-flex items-center gap-2 px-8 py-4 border-2 border-gray-200 dark:border-[#253a5e] text-gray-700 dark:text-gray-300 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-[#253a5e]/50 hover:scale-105 transition-all text-lg">
                     Create Account
                   </Link>
                 )}
@@ -339,103 +347,190 @@ export default function HomePage() {
           </div>
 
           {/* Stats Grid Below */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mt-16">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-16">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.2 }}
-              className="glass-card p-6 text-center relative overflow-hidden group hover:shadow-xl hover:shadow-blue-500/20 transition-all duration-300"
+              className="bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 glow-border glow-border-blue"
             >
-              {/* Animated background pulse */}
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-              
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-3 relative group-hover:scale-110 transition-transform duration-300">
-                <FiUsers className="text-white text-2xl" />
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30">
+                  <FiUsers className="text-white" size={18} />
+                </div>
+                <p className="text-xs text-gray-400 font-medium">Total Users</p>
               </div>
-              <div className="text-3xl md:text-4xl font-bold gradient-text mb-2 relative z-10">
-                {loading ? '...' : stats.totalUsers.toLocaleString()}
-              </div>
-              <div className="text-dark-600 dark:text-dark-400 text-sm relative z-10">Total Users</div>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : stats.totalUsers.toLocaleString()}</p>
             </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.3 }}
-                className="glass-card p-6 text-center relative overflow-hidden group hover:shadow-xl hover:shadow-green-500/20 transition-all duration-300"
-              >
-                {/* Animated background pulse */}
-                <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center mx-auto mb-3 relative group-hover:scale-110 transition-transform duration-300">
-                  <FiShoppingBag className="text-white text-2xl" />
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+              className="bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 glow-border glow-border-blue"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/30">
+                  <FiShoppingBag className="text-white" size={18} />
                 </div>
-                <div className="text-3xl md:text-4xl font-bold gradient-text mb-2 relative z-10">
-                  {loading ? '...' : stats.totalOrders.toLocaleString()}
-                </div>
-                <div className="text-dark-600 dark:text-dark-400 text-sm relative z-10">Total Orders</div>
-              </motion.div>
+                <p className="text-xs text-gray-400 font-medium">Total Orders</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : stats.totalOrders.toLocaleString()}</p>
+            </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.4 }}
-                className="glass-card p-6 text-center relative overflow-hidden group hover:shadow-xl hover:shadow-green-500/20 transition-all duration-300"
-              >
-                {/* Animated background pulse */}
-                <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center mx-auto mb-3 relative">
-                  {/* Multiple pulsing rings */}
-                  <span className="absolute inline-flex h-full w-full rounded-xl bg-green-400 opacity-75 animate-ping"></span>
-                  <span className="absolute inline-flex h-12 w-12 rounded-xl bg-green-500 opacity-50 animate-pulse"></span>
-                  
-                  {/* Users icon instead of dot */}
-                  <FiUsers className="text-white text-2xl relative z-10" />
-                  
-                  {/* Small blinking indicator */}
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-white shadow-lg"></span>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+              className="bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 glow-border glow-border-blue"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/30 relative">
+                  <FiUsers className="text-white" size={18} />
+                  <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400"></span>
                   </span>
                 </div>
-                <div className="text-3xl md:text-4xl font-bold gradient-text mb-2 relative z-10">
-                  {loading ? '...' : stats.onlineUsers.toLocaleString()}
-                </div>
-                <div className="text-dark-600 dark:text-dark-400 text-sm flex items-center justify-center gap-2 relative z-10">
-                  <span className="flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                  </span>
-                  Online Users
-                </div>
-              </motion.div>
+                <p className="text-xs text-gray-400 font-medium">Online Users</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : stats.onlineUsers.toLocaleString()}</p>
+            </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.5 }}
-                className="glass-card p-6 text-center relative overflow-hidden group hover:shadow-xl hover:shadow-orange-500/20 transition-all duration-300"
-              >
-                {/* Animated background pulse */}
-                <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-3 relative group-hover:scale-110 transition-transform duration-300">
-                  <FiPackage className="text-white text-2xl" />
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.5 }}
+              className="bg-white dark:bg-[#1a2742] rounded-2xl p-5 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 glow-border glow-border-blue"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
+                  <FiPackage className="text-white" size={18} />
                 </div>
-                <div className="text-3xl md:text-4xl font-bold gradient-text mb-2 relative z-10">
-                  {loading ? '...' : stats.totalServices.toLocaleString()}
-                </div>
-                <div className="text-dark-600 dark:text-dark-400 text-sm relative z-10">Total Services</div>
-              </motion.div>
-            </div>
+                <p className="text-xs text-gray-400 font-medium">Total Services</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : stats.totalServices.toLocaleString()}</p>
+            </motion.div>
+          </div>
         </div>
       </section>
 
-      {/* Platforms Section — dynamic from Firestore */}
+      {/* Top 10 Users Section - MOVED BEFORE PLATFORMS */}
+      <section className="py-20">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-12"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">
+              🏆 Top <span className="text-blue-600 dark:text-blue-400">10 Users</span>
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400">Our most active customers with highest orders</p>
+          </motion.div>
+
+          <div className="max-w-7xl mx-auto">
+            {topUsers.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {topUsers.map((topUser, index) => (
+                  <motion.div
+                    key={topUser.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.3, delay: index * 0.1 }}
+                    className="group bg-white dark:bg-[#1a2742] rounded-2xl p-5 text-center hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-[#253a5e] hover:-translate-y-1 relative glow-border glow-border-blue"
+                  >
+                    {/* Rank Badge */}
+                    <div className={`absolute -top-3 -right-3 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shadow-lg z-10 ${
+                      index === 0 ? 'bg-yellow-500 text-white' :
+                      index === 1 ? 'bg-gray-400 text-white' :
+                      index === 2 ? 'bg-orange-500 text-white' :
+                      'bg-blue-600 text-white'
+                    }`}>
+                      #{index + 1}
+                    </div>
+
+                    {/* Profile Picture */}
+                    <div className="relative mx-auto mb-3">
+                      <div className={`w-20 h-20 rounded-full mx-auto overflow-hidden ring-4 ${
+                        index === 0 ? 'ring-yellow-400' :
+                        index === 1 ? 'ring-gray-400' :
+                        index === 2 ? 'ring-orange-400' :
+                        'ring-blue-400'
+                      }`}>
+                        {topUser.photoURL ? (
+                          <img 
+                            src={topUser.photoURL} 
+                            alt={topUser.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(topUser.name)}&size=200&background=random`;
+                            }}
+                          />
+                        ) : (
+                          <img 
+                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(topUser.name)}&size=200&background=random`}
+                            alt={topUser.name}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                      </div>
+                      {index < 3 && (
+                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-3xl">
+                          {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* User Info */}
+                    <h4 className="font-bold text-sm text-gray-900 dark:text-white mb-3 px-2 break-words" style={{wordBreak: 'break-word'}}>
+                      {topUser.name}
+                    </h4>
+
+                    {/* Order Count */}
+                    <div className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gray-50 dark:bg-[#253a5e]/30 border border-gray-100 dark:border-[#253a5e] mb-3">
+                      <FiAward className="text-blue-600 dark:text-blue-400" size={14} />
+                      <span className="font-bold text-lg text-blue-600 dark:text-blue-400">
+                        {topUser.orderCount}
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">orders</span>
+                    </div>
+
+                    <Link 
+                      href="/dashboard" 
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-all shadow-md shadow-blue-600/20"
+                    >
+                      View Services <FiArrowRight size={12} />
+                    </Link>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-16 bg-white dark:bg-[#1a2742] rounded-2xl border border-gray-100 dark:border-[#253a5e]">
+                <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center mx-auto mb-6">
+                  <span className="text-5xl">👥</span>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3">No Top Users Yet</h3>
+                <p className="text-gray-400 dark:text-gray-500 max-w-md mx-auto mb-6">
+                  Be the first to place orders and become a top user! Start ordering now to appear in our leaderboard.
+                </p>
+                <Link href="/dashboard" className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20">
+                  Start Ordering <FiArrowRight />
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Platforms Section - MOVED AFTER TOP USERS */}
       {(loadingPlatforms || platforms.length > 0) && (
-        <section className="py-20 relative bg-dark-50 dark:bg-dark-950">
-          <div className="relative container-custom">
+        <section className="py-20 bg-gray-50 dark:bg-dark-900">
+          <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -443,24 +538,24 @@ export default function HomePage() {
               transition={{ duration: 0.5 }}
               className="text-center mb-12"
             >
-              <h2 className="section-title">
-                Available <span className="gradient-text">Platforms</span>
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">
+                Available <span className="text-blue-600 dark:text-blue-400">Platforms</span>
               </h2>
-              <p className="section-subtitle">We support all major social media platforms</p>
+              <p className="text-gray-500 dark:text-gray-400">We support all major social media platforms</p>
             </motion.div>
 
             {loadingPlatforms ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="bg-dark-100 dark:bg-dark-800 rounded-3xl p-8 text-center animate-pulse border-2 border-dark-200 dark:border-dark-700">
-                    <div className="w-20 h-20 rounded-3xl bg-dark-200 dark:bg-dark-700 mx-auto mb-4" />
-                    <div className="h-5 bg-dark-200 dark:bg-dark-700 rounded-xl w-2/3 mx-auto mb-2" />
-                    <div className="h-3 bg-dark-200 dark:bg-dark-700 rounded w-full mx-auto" />
+                  <div key={i} className="bg-white dark:bg-[#1a2742] rounded-2xl p-8 text-center animate-pulse border border-gray-100 dark:border-[#253a5e]">
+                    <div className="w-20 h-20 rounded-2xl bg-gray-200 dark:bg-[#253a5e] mx-auto mb-4" />
+                    <div className="h-5 bg-gray-200 dark:bg-[#253a5e] rounded-xl w-2/3 mx-auto mb-2" />
+                    <div className="h-3 bg-gray-200 dark:bg-[#253a5e] rounded w-full mx-auto" />
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {platforms.map((platform, index) => (
                   <motion.div
                     key={platform.id}
@@ -468,49 +563,22 @@ export default function HomePage() {
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.4, delay: index * 0.08 }}
-                    className="group relative bg-dark-100 dark:bg-dark-800 rounded-3xl p-8 text-center border-2 border-dark-200 dark:border-dark-700 hover:border-primary-500 dark:hover:border-primary-600 transition-all duration-300 hover:shadow-2xl hover:shadow-primary-500/20 hover:-translate-y-2"
+                    className="group bg-white dark:bg-[#1a2742] rounded-2xl p-6 text-center border border-gray-100 dark:border-[#253a5e] hover:shadow-xl transition-all duration-300 hover:-translate-y-1 glow-border glow-border-blue"
                   >
-                    {/* Glow effect */}
-                    <div 
-                      className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-10 transition-opacity duration-500 bg-gradient-to-br"
-                      style={{ 
-                        backgroundImage: `linear-gradient(135deg, ${platform.color || '#6366f1'}, ${platform.color || '#6366f1'}40)`
-                      }}
-                    ></div>
-                    
-                    {/* Glowing border effect */}
-                    <div 
-                      className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                      style={{ 
-                        boxShadow: `0 0 30px ${platform.color || '#6366f1'}30`
-                      }}
-                    ></div>
-
-                    {/* Icon with animations */}
-                    <div
-                      className="relative w-20 h-20 rounded-3xl flex items-center justify-center overflow-hidden group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-xl mx-auto mb-5"
-                      style={{ backgroundColor: platform.color || '#6366f1' }}
-                    >
-                      {/* Shine effect */}
-                      <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-                      
+                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300"
+                      style={{ backgroundColor: '#274C75', boxShadow: '0 8px 20px -4px #274C7550' }}>
                       {platform.icon ? (
-                        <img src={platform.icon} alt={platform.name} className="w-12 h-12 object-contain relative z-10" />
+                        <img src={platform.icon} alt={platform.name} className="w-10 h-10 object-contain" />
                       ) : (
-                        <span className="text-white font-bold text-3xl relative z-10">{platform.name[0]}</span>
+                        <span className="text-white font-bold text-2xl">{platform.name[0]}</span>
                       )}
-
-                      {/* Sparkle effect */}
-                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-yellow-300 text-xl animate-pulse">
-                        ✨
-                      </div>
                     </div>
                     
-                    <h3 className="text-lg font-bold text-dark-900 dark:text-white text-center relative z-10 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors mb-2">
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors mb-1">
                       {platform.name}
                     </h3>
                     {platform.description && (
-                      <p className="text-sm text-dark-500 dark:text-dark-400 text-center line-clamp-2 relative z-10">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 line-clamp-2">
                         {platform.description}
                       </p>
                     )}
@@ -520,138 +588,17 @@ export default function HomePage() {
             )}
 
             <div className="mt-12 text-center">
-              <Link href="/dashboard" className="btn-primary btn-lg inline-flex items-center gap-2 shadow-xl shadow-primary-500/30 hover:shadow-2xl hover:shadow-primary-500/50 hover:scale-105 transition-all">
-                View All Services <FiArrowRight className="group-hover:translate-x-2 transition-transform" />
+              <Link href="/dashboard" className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xl shadow-blue-600/30 hover:shadow-2xl hover:shadow-blue-600/50 transition-all text-lg">
+                View All Services <FiArrowRight />
               </Link>
             </div>
           </div>
         </section>
       )}
 
-      {/* Top 5 Users Section - Always show with empty state if no users */}
-      <section className="py-20 bg-dark-50 dark:bg-dark-950">
-        <div className="container-custom">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="text-center mb-12"
-          >
-            <h2 className="section-title">
-              🏆 Top <span className="gradient-text">10 Users</span>
-            </h2>
-            <p className="section-subtitle">Our most active customers with highest orders</p>
-          </motion.div>
-
-          <div className="max-w-7xl mx-auto">
-            {topUsers.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-                {topUsers.map((user, index) => (
-                  <motion.div
-                    key={user.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.3, delay: index * 0.1 }}
-                    className="group relative bg-dark-100 dark:bg-dark-800 rounded-3xl p-6 text-center hover:shadow-2xl hover:shadow-primary-500/20 transition-all duration-300 border-2 border-dark-200 dark:border-dark-700 hover:border-primary-500 dark:hover:border-primary-600 hover:-translate-y-2"
-                  >
-                    {/* Glow effect */}
-                    <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    
-                    {/* Rank Badge */}
-                    <div className={`absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-lg z-10 ${
-                      index === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600 text-white ring-2 ring-yellow-300' :
-                      index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500 text-white ring-2 ring-gray-200' :
-                      index === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white ring-2 ring-orange-300' :
-                      'bg-gradient-to-br from-primary-400 to-primary-600 text-white ring-2 ring-primary-300'
-                    }`}>
-                      #{index + 1}
-                    </div>
-
-                    {/* Profile Picture */}
-                    <div className="relative mx-auto mb-4">
-                      <div className={`w-28 h-28 rounded-full mx-auto overflow-hidden ring-4 group-hover:ring-8 transition-all duration-300 ${
-                        index === 0 ? 'ring-yellow-400 group-hover:ring-yellow-300' :
-                        index === 1 ? 'ring-gray-400 group-hover:ring-gray-300' :
-                        index === 2 ? 'ring-orange-400 group-hover:ring-orange-300' :
-                        'ring-primary-400 group-hover:ring-primary-300'
-                      }`}>
-                        {user.photoURL ? (
-                          <img 
-                            src={user.photoURL} 
-                            alt={user.name}
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                            onError={(e) => {
-                              e.target.onerror = null;
-                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&size=200&background=random`;
-                            }}
-                          />
-                        ) : (
-                          <img 
-                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&size=200&background=random`}
-                            alt={user.name}
-                            className="w-full h-full object-cover"
-                          />
-                        )}
-                      </div>
-                      {/* Medal for top 3 */}
-                      {index < 3 && (
-                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-4xl animate-bounce">
-                          {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* User Info - Full Name, No Truncate */}
-                    <h4 className="font-bold text-xl text-dark-900 dark:text-white mb-4 px-2 break-words group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors relative z-10" style={{wordBreak: 'break-word'}}>
-                      {user.name}
-                    </h4>
-
-                    {/* Order Count */}
-                    <div className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-dark-50 dark:bg-dark-900 border border-dark-200 dark:border-dark-700 mb-4 relative z-10">
-                      <FiAward className="text-primary-500 text-xl" />
-                      <span className="font-bold text-2xl bg-gradient-to-r from-primary-500 to-purple-500 bg-clip-text text-transparent">
-                        {user.orderCount}
-                      </span>
-                      <span className="text-sm text-dark-600 dark:text-dark-400">orders</span>
-                    </div>
-
-                    {/* View Services Button */}
-                    <Link 
-                      href="/dashboard" 
-                      className="relative z-10 inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary-500 to-purple-600 text-white font-semibold text-sm hover:from-primary-600 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-primary-500/30 group-hover:scale-105"
-                    >
-                      View Services
-                      <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
-                    </Link>
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-16">
-                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-dark-200 to-dark-300 dark:from-dark-700 dark:to-dark-800 flex items-center justify-center mx-auto mb-6">
-                  <span className="text-6xl">👥</span>
-                </div>
-                <h3 className="text-2xl font-bold text-dark-900 dark:text-white mb-3">
-                  No Top Users Yet
-                </h3>
-                <p className="text-dark-600 dark:text-dark-400 max-w-md mx-auto">
-                  Be the first to place orders and become a top user! 
-                  Start ordering now to appear in our leaderboard.
-                </p>
-                <Link href="/dashboard" className="btn-primary mt-6 inline-flex items-center gap-2">
-                  Start Ordering <FiArrowRight />
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
       {/* Features Section */}
-      <section className="py-20 bg-dark-50 dark:bg-dark-950">
-        <div className="container-custom">
+      <section className="py-20">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -659,18 +606,15 @@ export default function HomePage() {
             transition={{ duration: 0.5 }}
             className="text-center mb-12"
           >
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              <span className="text-dark-900 dark:text-white">Why Choose </span>
-              <span className="bg-gradient-to-r from-primary-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-                MSF SMM Panel
-              </span>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">
+              Why Choose <span className="text-blue-600 dark:text-blue-400">MSF SMM Panel</span>
             </h2>
-            <p className="text-xl text-dark-600 dark:text-dark-300 font-medium">
-              The <span className="text-primary-600 dark:text-primary-400 font-bold">best SMM panel</span> for your social media growth
+            <p className="text-gray-500 dark:text-gray-400 text-lg">
+              The <span className="text-blue-600 dark:text-blue-400 font-bold">best SMM panel</span> for your social media growth
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {features.map((feature, index) => (
               <motion.div
                 key={feature.title}
@@ -678,22 +622,17 @@ export default function HomePage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4, delay: index * 0.1 }}
-                className="group relative bg-dark-100 dark:bg-dark-800 rounded-2xl p-8 text-center border border-dark-200 dark:border-dark-700 hover:border-primary-500 dark:hover:border-primary-600 transition-all duration-300 hover:shadow-2xl hover:shadow-primary-500/20 hover:-translate-y-2"
+                className="group bg-white dark:bg-[#1a2742] rounded-2xl p-6 text-center border border-gray-100 dark:border-[#253a5e] hover:shadow-xl transition-all duration-300 hover:-translate-y-1 glow-border glow-border-blue"
               >
-                {/* Glow effect on hover */}
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                
-                <div className="relative">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center mx-auto mb-5 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-lg shadow-primary-500/30">
-                    <feature.icon className="text-white text-2xl" />
-                  </div>
-                  <h3 className="font-bold text-xl text-dark-900 dark:text-white mb-3 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                    {feature.title}
-                  </h3>
-                  <p className="text-dark-600 dark:text-dark-300 text-sm leading-relaxed font-medium">
-                    {feature.description}
-                  </p>
+                <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-blue-600/30">
+                  <feature.icon className="text-white" size={22} />
                 </div>
+                <h3 className="font-bold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
+                  {feature.description}
+                </p>
               </motion.div>
             ))}
           </div>
@@ -701,14 +640,8 @@ export default function HomePage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 relative overflow-hidden bg-gradient-to-br from-primary-600 via-purple-600 to-primary-800 dark:from-primary-700 dark:via-purple-700 dark:to-primary-900">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-        </div>
-        
-        <div className="relative container-custom text-center">
+      <section className="py-20 bg-blue-600 dark:bg-blue-700">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -717,15 +650,14 @@ export default function HomePage() {
           >
             <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
               Ready to Grow Your 
-              <span className="block mt-2 text-yellow-300 animate-pulse">Social Media?</span>
+              <span className="block mt-2 text-yellow-300">Social Media?</span>
             </h2>
-            <p className="text-xl md:text-2xl text-white/95 mb-10 max-w-3xl mx-auto font-medium leading-relaxed">
+            <p className="text-xl md:text-2xl text-white/90 mb-10 max-w-3xl mx-auto font-medium leading-relaxed">
               Join <span className="text-yellow-300 font-bold">thousands of satisfied customers</span> who trust MSF SMM Panel for their social media growth.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/dashboard" className="group inline-flex items-center gap-2 px-10 py-5 rounded-2xl bg-white text-primary-600 font-bold text-lg hover:bg-yellow-300 hover:text-primary-700 transition-all shadow-2xl hover:shadow-white/50 transform hover:scale-110">
-                Start Now 
-                <FiArrowRight className="group-hover:translate-x-2 transition-transform" />
+              <Link href="/dashboard" className="inline-flex items-center gap-2 px-10 py-5 rounded-2xl bg-white text-blue-600 font-bold text-lg hover:bg-yellow-300 hover:text-blue-700 transition-all shadow-2xl hover:shadow-white/50 transform hover:scale-105">
+                Start Now <FiArrowRight />
               </Link>
               {!user && (
                 <Link href="/auth/login" className="inline-flex items-center gap-2 px-10 py-5 rounded-2xl border-2 border-white/50 bg-white/10 backdrop-blur-sm text-white font-bold text-lg hover:bg-white/20 hover:border-white transition-all shadow-lg hover:scale-105">
@@ -736,6 +668,25 @@ export default function HomePage() {
           </motion.div>
         </div>
       </section>
+
+      {/* Admin Photo Modal */}
+      <AdminPhotoModal 
+        isOpen={showAdminPhotoModal} 
+        onClose={() => setShowAdminPhotoModal(false)} 
+        adminSettings={adminSettings} 
+      />
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 dark:from-[#0f172a] dark:to-[#1a2742]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <HomePageContent />
+    </Suspense>
   );
 }

@@ -1,75 +1,90 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   
-  <!-- Homepage -->
+  <!-- Homepage - Most Important -->
   <url>
-    <loc>https://msfsmm.web.app/</loc>
-    <lastmod>2026-07-15</lastmod>
+    <loc>https://msfsmm.com/</loc>
+    <lastmod>2026-07-21</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   
   <!-- Dashboard -->
   <url>
-    <loc>https://msfsmm.web.app/dashboard</loc>
-    <lastmod>2026-07-15</lastmod>
+    <loc>https://msfsmm.com/dashboard</loc>
+    <lastmod>2026-07-21</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   
-  <!-- Services -->
+  <!-- Services Browse Page -->
   <url>
-    <loc>https://msfsmm.web.app/dashboard/services</loc>
-    <lastmod>2026-07-15</lastmod>
+    <loc>https://msfsmm.com/dashboard/services</loc>
+    <lastmod>2026-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   
   <!-- Orders -->
   <url>
-    <loc>https://msfsmm.web.app/dashboard/orders</loc>
-    <lastmod>2026-07-15</lastmod>
+    <loc>https://msfsmm.com/dashboard/orders</loc>
+    <lastmod>2026-07-21</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  
+  <!-- Wallet/Deposit -->
+  <url>
+    <loc>https://msfsmm.com/dashboard/wallet</loc>
+    <lastmod>2026-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   
-  <!-- Add Funds -->
-  <url>
-    <loc>https://msfsmm.web.app/dashboard/add-funds</loc>
-    <lastmod>2026-07-15</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  
   <!-- Auth Pages -->
   <url>
-    <loc>https://msfsmm.web.app/auth/login</loc>
-    <lastmod>2026-07-15</lastmod>
+    <loc>https://msfsmm.com/auth/login</loc>
+    <lastmod>2026-07-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   
   <url>
-    <loc>https://msfsmm.web.app/auth/register</loc>
-    <lastmod>2026-07-15</lastmod>
+    <loc>https://msfsmm.com/auth/register</loc>
+    <lastmod>2026-07-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
+  </url>
+  
+  <!-- Support/Help -->
+  <url>
+    <loc>https://msfsmm.com/support</loc>
+    <lastmod>2026-07-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
   </url>
   
   <!-- Policies -->
   <url>
-    <loc>https://msfsmm.web.app/policies</loc>
-    <lastmod>2026-07-15</lastmod>
+    <loc>https://msfsmm.com/policies/terms</loc>
+    <lastmod>2026-07-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   
-  <!-- Help -->
   <url>
-    <loc>https://msfsmm.web.app/help</loc>
-    <lastmod>2026-07-15</lastmod>
+    <loc>https://msfsmm.com/policies/privacy</loc>
+    <lastmod>2026-07-21</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.5</priority>
   </url>
   
+  <url>
+    <loc>https://msfsmm.com/policies/refund</loc>
+    <lastmod>2026-07-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
 </urlset>

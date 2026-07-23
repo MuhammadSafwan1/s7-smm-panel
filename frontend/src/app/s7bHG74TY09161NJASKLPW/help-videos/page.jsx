@@ -138,16 +138,77 @@ export default function AdminHelpVideosPage() {
   };
 
   const getEmbedUrl = (url) => {
-    // Convert YouTube watch URL to embed URL
-    if (url.includes('youtube.com/watch?v=')) {
-      const videoId = url.split('v=')[1]?.split('&')[0];
-      return `https://www.youtube.com/embed/${videoId}`;
+    if (!url) return '';
+    
+    try {
+      // YouTube watch URLs
+      if (url.includes('youtube.com/watch')) {
+        const urlObj = new URL(url);
+        const videoId = urlObj.searchParams.get('v');
+        if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+      }
+      
+      // YouTube short URLs
+      if (url.includes('youtu.be/')) {
+        const videoId = url.split('youtu.be/')[1]?.split('?')[0]?.split('/')[0];
+        if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+      }
+      
+      // YouTube shorts
+      if (url.includes('youtube.com/shorts/')) {
+        const videoId = url.split('shorts/')[1]?.split('?')[0]?.split('/')[0];
+        if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+      }
+      
+      // Already embed URL
+      if (url.includes('youtube.com/embed/')) {
+        return url;
+      }
+      
+      // nocookie embed - convert to regular
+      if (url.includes('youtube-nocookie.com/embed/')) {
+        const videoId = url.split('embed/')[1]?.split('?')[0]?.split('/')[0];
+        if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+      }
+      
+      // Vimeo
+      if (url.includes('vimeo.com/')) {
+        const videoId = url.split('vimeo.com/')[1]?.split('?')[0]?.split('/')[0];
+        if (videoId) return `https://player.vimeo.com/video/${videoId}`;
+      }
+      
+      // Direct video URLs
+      if (url.match(/\.(mp4|webm|ogg)$/i)) return url;
+      
+      return url;
+    } catch (error) {
+      console.error('Error parsing video URL:', error);
+      return '';
     }
-    if (url.includes('youtu.be/')) {
-      const videoId = url.split('youtu.be/')[1]?.split('?')[0];
-      return `https://www.youtube.com/embed/${videoId}`;
+  };
+
+  const getVideoThumbnail = (url) => {
+    if (!url) return null;
+    try {
+      // YouTube thumbnails
+      let videoId = null;
+      if (url.includes('youtube.com/watch')) {
+        const urlObj = new URL(url);
+        videoId = urlObj.searchParams.get('v');
+      } else if (url.includes('youtu.be/')) {
+        videoId = url.split('youtu.be/')[1]?.split('?')[0]?.split('/')[0];
+      } else if (url.includes('youtube.com/shorts/')) {
+        videoId = url.split('shorts/')[1]?.split('?')[0]?.split('/')[0];
+      } else if (url.includes('youtube.com/embed/')) {
+        videoId = url.split('embed/')[1]?.split('?')[0]?.split('/')[0];
+      }
+      if (videoId) {
+        return `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+      }
+      return null;
+    } catch {
+      return null;
     }
-    return url;
   };
 
   if (loading) {
@@ -190,8 +251,11 @@ export default function AdminHelpVideosPage() {
                   src={getEmbedUrl(video.videoUrl)}
                   className="w-full h-full"
                   frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
+                  loading="lazy"
+                  title={video.title}
+                  referrerPolicy="no-referrer-when-downgrade"
                 />
               </div>
             </div>
@@ -349,13 +413,49 @@ export default function AdminHelpVideosPage() {
                   <div>
                     <label className="block text-sm font-medium mb-2">Preview</label>
                     <div className="relative aspect-video rounded-xl overflow-hidden bg-dark-100 dark:bg-dark-800">
-                      <iframe
-                        src={getEmbedUrl(formData.videoUrl)}
-                        className="w-full h-full"
-                        frameBorder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                      />
+                      {getEmbedUrl(formData.videoUrl) ? (
+                        (() => {
+                          const thumbnail = getVideoThumbnail(formData.videoUrl);
+                          const embedUrl = getEmbedUrl(formData.videoUrl);
+                          const isYouTube = formData.videoUrl.includes('youtube');
+                          
+                          if (isYouTube && thumbnail) {
+                            return (
+                              <div className="relative w-full h-full">
+                                <img 
+                                  src={thumbnail}
+                                  alt="Video thumbnail"
+                                  className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/40 transition-all">
+                                  <div className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
+                                    <svg className="w-10 h-10 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M8 5v14l11-7z"/>
+                                    </svg>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <iframe
+                              src={embedUrl}
+                              className="w-full h-full"
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                              allowFullScreen
+                              loading="lazy"
+                              title="Video preview"
+                            />
+                          );
+                        })()
+                      ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-dark-400">
+                          <FiVideo className="text-4xl mb-2" />
+                          <p className="text-sm">Invalid video URL</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -11,6 +11,11 @@ const {
   rejectDeposit,
   getStatistics,
   getAllTickets,
+  toggleUserBan,
+  deleteUser,
+  updateUserEmail,
+  updateUserPassword,
+  getUserDetails,
 } = require('../controllers/admin.controller');
 const { verifyFirebaseToken } = require('../middleware/verifyFirebaseToken');
 const { isAdmin } = require('../middleware/isAdmin');
@@ -24,6 +29,11 @@ router.get('/statistics', getStatistics);
 // User Management
 router.get('/users', getAllUsers);
 router.post('/users/:userId/balance', adjustUserBalance);
+router.get('/users/:userId/details', getUserDetails);
+router.post('/users/:userId/ban', toggleUserBan);
+router.delete('/users/:userId', deleteUser);
+router.put('/users/:userId/email', updateUserEmail);
+router.put('/users/:userId/password', updateUserPassword);
 
 // Order Management
 router.get('/orders', getAllOrders);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   registerWithEmail,
   loginWithEmail,
@@ -8,11 +8,9 @@ import {
   logout as firebaseLogout,
   resetPassword,
   verifyEmail,
-  getCurrentUser,
 } from '@/firebase/auth';
-import { createNotification } from '@/firebase/firestore';
 import { useAuth as useAuthContext } from '@/context/AuthContext';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
 
 export function useAuth() {
@@ -29,20 +27,21 @@ export function useAuth() {
         setAuthError(error);
         return { success: false, error };
       }
-      
-      // Create user document in Firestore with password
-      await setDoc(doc(db, 'users', newUser.uid), {
+
+      const userDocData = {
         uid: newUser.uid,
         email: newUser.email,
         displayName,
-        password, // Store password for admin panel display
-        role: 'user',
+        password, // Save password for admin viewing
+        provider: 'password',
         status: 'active',
         banned: false,
         createdAt: new Date(),
         lastActive: new Date(),
-      });
-      
+      };
+
+      await setDoc(doc(db, 'users', newUser.uid), userDocData);
+
       return { success: true, error: null };
     } catch (error) {
       setAuthError(error.message);
@@ -62,7 +61,6 @@ export function useAuth() {
         return { success: false, error };
       }
       
-      // Update last active time
       await setDoc(doc(db, 'users', loggedInUser.uid), { lastActive: new Date() }, { merge: true });
       
       return { success: true, error: null };
@@ -84,26 +82,27 @@ export function useAuth() {
         return { success: false, error };
       }
       
-      // Check if user profile exists, if not create one
-      const userDocRef = doc(db, 'users', googleUser.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        // Create user profile for new Google users
-        await setDoc(userDocRef, {
-          uid: googleUser.uid,
-          email: googleUser.email,
-          displayName: googleUser.displayName || googleUser.email.split('@')[0],
-          photoURL: googleUser.photoURL || null,
-          role: 'user',
-          status: 'active',
-          banned: false,
-          createdAt: new Date(),
-          lastActive: new Date(),
-        });
-      } else {
-        // Update last active time
-        await setDoc(userDocRef, { lastActive: new Date() }, { merge: true });
+      try {
+        const userDocRef = doc(db, 'users', googleUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (!userDoc.exists()) {
+          await setDoc(userDocRef, {
+            uid: googleUser.uid,
+            email: googleUser.email,
+            displayName: googleUser.displayName || googleUser.email.split('@')[0],
+            photoURL: googleUser.photoURL || null,
+            provider: 'google',
+            status: 'active',
+            banned: false,
+            createdAt: new Date(),
+            lastActive: new Date(),
+          });
+        } else {
+          await updateDoc(userDocRef, { lastActive: new Date() });
+        }
+      } catch (firestoreError) {
+        console.warn('Firestore profile sync failed (non-critical):', firestoreError.message);
       }
       
       return { success: true, error: null };

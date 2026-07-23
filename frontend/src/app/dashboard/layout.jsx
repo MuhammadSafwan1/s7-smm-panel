@@ -5,18 +5,40 @@ import { db } from '@/firebase/firestore';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '@/context/AuthContext';
 import MaintenanceMode from '@/components/common/MaintenanceMode';
+import MaintenanceMessage from '@/components/common/MaintenanceMessage';
 import { PageLoader } from '@/components/common/Loader';
+import BanCheck from '@/components/common/BanCheck';
+import { usePathname } from 'next/navigation';
 
 export default function DashboardLayout({ children }) {
   const { user } = useAuth();
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [loginEnabled, setLoginEnabled] = useState(true);
   const [isWhitelisted, setIsWhitelisted] = useState(false);
+  const [sectionMaintenance, setSectionMaintenance] = useState({
+    Dashboard: false,
+    Orders: false,
+    Services: false,
+    AddFunds: false,
+    Settings: false,
+    Transactions: false,
+  });
 
   useEffect(() => {
     checkSettings();
-  }, [user]); // Re-check when user changes
+  }, [user]);
+
+  const getSectionFromPath = () => {
+    if (pathname === '/dashboard') return 'Dashboard';
+    if (pathname.startsWith('/dashboard/orders')) return 'Orders';
+    if (pathname.startsWith('/dashboard/services')) return 'Services';
+    if (pathname.startsWith('/dashboard/add-funds')) return 'AddFunds';
+    if (pathname.startsWith('/dashboard/settings')) return 'Settings';
+    if (pathname.startsWith('/dashboard/transactions')) return 'Transactions';
+    return null;
+  };
 
   const checkSettings = async () => {
     try {
@@ -28,13 +50,48 @@ export default function DashboardLayout({ children }) {
         
         setMaintenanceMode(maintenance);
         setLoginEnabled(data.websiteLoginEnabled !== false);
+        setSectionMaintenance({
+          Dashboard: !!(data.pageMaintenance?.dashboard || data.maintenanceDashboard),
+          Orders: !!(data.pageMaintenance?.orders || data.maintenanceOrders),
+          Services: !!(data.pageMaintenance?.services || data.maintenanceServices),
+          AddFunds: !!(data.pageMaintenance?.addFunds || data.maintenanceAddFunds),
+          Settings: !!(data.pageMaintenance?.settings),
+          Transactions: !!(data.pageMaintenance?.transactions),
+        });
         
-        // Check if current user is whitelisted
-        if (user && maintenance && whitelistedEmails.includes(user.email)) {
+        console.log('🔧 Per-Page Maintenance Check:', {
+          pageMaintenance: data.pageMaintenance,
+          sectionMaintenance: {
+            Dashboard: !!(data.pageMaintenance?.dashboard || data.maintenanceDashboard),
+            Orders: !!(data.pageMaintenance?.orders || data.maintenanceOrders),
+            Services: !!(data.pageMaintenance?.services || data.maintenanceServices),
+            AddFunds: !!(data.pageMaintenance?.addFunds || data.maintenanceAddFunds),
+            Settings: !!(data.pageMaintenance?.settings),
+            Transactions: !!(data.pageMaintenance?.transactions),
+          },
+          maintenanceMode: maintenance,
+          isWhitelisted: isWhitelistedUser,
+          currentSection: getSectionFromPath(),
+        });
+        
+        // Maintenance bypass only for whitelisted emails from Firestore settings
+        const currentEmail = (user?.email || '').trim().toLowerCase();
+        const whitelistList = Array.isArray(whitelistedEmails)
+          ? whitelistedEmails.map((e) => (e || '').trim().toLowerCase()).filter(Boolean)
+          : [];
+        const isWhitelistedUser = !!(
+          currentEmail &&
+          whitelistList.includes(currentEmail)
+        );
+
+        if (isWhitelistedUser) {
           setIsWhitelisted(true);
-          console.log('✅ User is whitelisted - granting maintenance access');
+          console.log('✅ Whitelist match:', currentEmail);
         } else {
           setIsWhitelisted(false);
+          if (maintenance && user) {
+            console.log('❌ No whitelist match for:', currentEmail, 'list:', whitelistList);
+          }
         }
       }
     } catch (error) {
@@ -48,9 +105,15 @@ export default function DashboardLayout({ children }) {
     return <PageLoader />;
   }
 
-  // If maintenance mode is ON and user is NOT whitelisted, show maintenance screen
+  // Global dashboard maintenance
   if (maintenanceMode && !isWhitelisted) {
     return <MaintenanceMode />;
+  }
+
+  // Section-specific maintenance
+  const currentSection = getSectionFromPath();
+  if (currentSection && !isWhitelisted && sectionMaintenance[currentSection]) {
+    return <MaintenanceMessage section={currentSection === 'AddFunds' ? 'AddFunds' : currentSection} showBackButton={false} />;
   }
 
   // If login is disabled, show message
@@ -75,5 +138,10 @@ export default function DashboardLayout({ children }) {
     );
   }
 
-  return <>{children}</>;
+  // Wrap with BanCheck to block banned users from accessing dashboard
+  return (
+    <BanCheck>
+      {children}
+    </BanCheck>
+  );
 }

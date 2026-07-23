@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiLayers, FiUpload, FiX, FiLink } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiLayers, FiUpload, FiX, FiLink, FiTool } from 'react-icons/fi';
 
 // Same icon upload component as platforms
 function IconUpload({ value, onChange }) {
@@ -130,14 +130,16 @@ export default function CategoriesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [selectedPlatform, setSelectedPlatform] = useState('all');
+  const [selectedPlatform, setSelectedPlatform] = useState(null); // Changed from 'all' to null
 
   const [form, setForm] = useState({
     name: '',
     platformId: '',
     icon: '',
     description: '',
+    sortOrder: '',
     isActive: true,
+    maintenance: false,
   });
 
   useEffect(() => { fetchData(); }, []);
@@ -149,19 +151,26 @@ export default function CategoriesPage() {
         getDocs(collection(db, 'platforms')),
       ]);
       setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setPlatforms(platSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const platformsList = platSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPlatforms(platformsList);
+      // Set first platform as default selected if not already set
+      if (!selectedPlatform && platformsList.length > 0) {
+        setSelectedPlatform(platformsList[0].id);
+      }
     } catch (e) { console.error(e); }
   };
 
   const openAdd = () => {
     setEditingCategory(null);
-    setForm({ name: '', platformId: platforms[0]?.id || '', icon: '', description: '', isActive: true });
+    // Use the currently selected platform, or fallback to first platform
+    const preselectedPlatformId = selectedPlatform || (platforms[0]?.id || '');
+    setForm({ name: '', platformId: preselectedPlatformId, icon: '', description: '', sortOrder: '', isActive: true });
     setShowModal(true);
   };
 
   const openEdit = (cat) => {
     setEditingCategory(cat);
-    setForm({ name: cat.name, platformId: cat.platformId, icon: cat.icon || '', description: cat.description || '', isActive: cat.isActive });
+    setForm({ name: cat.name, platformId: cat.platformId, icon: cat.icon || '', description: cat.description || '', sortOrder: cat.sortOrder || '', isActive: cat.isActive, maintenance: !!cat.maintenance });
     setShowModal(true);
   };
 
@@ -169,15 +178,33 @@ export default function CategoriesPage() {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Category name is required'); return; }
     if (!form.platformId) { toast.error('Please select a platform'); return; }
+    
+    // Check if sortOrder is already used in the same platform
+    if (form.sortOrder && form.sortOrder.trim() !== '') {
+      const duplicateOrder = categories.find(
+        cat => cat.platformId === form.platformId && 
+               cat.sortOrder === parseInt(form.sortOrder) &&
+               (!editingCategory || cat.id !== editingCategory.id)
+      );
+      if (duplicateOrder) {
+        const platformName = platforms.find(p => p.id === form.platformId)?.name || 'this platform';
+        toast.error(`Display Order ${form.sortOrder} is already used by "${duplicateOrder.name}" in ${platformName}`);
+        return;
+      }
+    }
+    
     setSaving(true);
     try {
       const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-      const data = { ...form, slug, updatedAt: Timestamp.now() };
+      if (!editingCategory && form.maintenance === undefined) form.maintenance = false;
+      // Convert sortOrder to number, default to 999 if not provided
+      const sortOrderValue = form.sortOrder && form.sortOrder.trim() !== '' ? parseInt(form.sortOrder) : 999;
+      const data = { ...form, slug, sortOrder: sortOrderValue, updatedAt: Timestamp.now() };
       if (editingCategory) {
         await updateDoc(doc(db, 'categories', editingCategory.id), data);
         toast.success('Category updated');
       } else {
-        await addDoc(collection(db, 'categories'), { ...data, sortOrder: categories.length, createdAt: Timestamp.now() });
+        await addDoc(collection(db, 'categories'), { ...data, createdAt: Timestamp.now() });
         toast.success('Category added');
       }
       setShowModal(false);
@@ -202,7 +229,7 @@ export default function CategoriesPage() {
 
   const getPlatform = (id) => platforms.find(p => p.id === id);
 
-  const filtered = selectedPlatform === 'all' ? categories : categories.filter(c => c.platformId === selectedPlatform);
+  const filtered = selectedPlatform ? categories.filter(c => c.platformId === selectedPlatform) : [];
 
   return (
     <div>
@@ -226,9 +253,6 @@ export default function CategoriesPage() {
       {/* Platform Filter */}
       {platforms.length > 0 && (
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          <button onClick={() => setSelectedPlatform('all')} className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${selectedPlatform === 'all' ? 'bg-primary-500 text-white' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
-            All ({categories.length})
-          </button>
           {platforms.map(p => (
             <button key={p.id} onClick={() => setSelectedPlatform(p.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${selectedPlatform === p.id ? 'text-white' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}
@@ -245,8 +269,8 @@ export default function CategoriesPage() {
         <div className="glass-card p-16 text-center">
           <FiLayers className="text-5xl text-dark-300 dark:text-dark-600 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-dark-900 dark:text-white mb-2">No Categories</h3>
-          <p className="text-dark-500 mb-6">{selectedPlatform === 'all' ? 'Add your first category' : 'No categories for this platform'}</p>
-          {platforms.length > 0 && selectedPlatform === 'all' && (
+          <p className="text-dark-500 mb-6">No categories for this platform yet</p>
+          {platforms.length > 0 && (
             <button onClick={openAdd} className="btn-primary"><FiPlus className="inline mr-2" />Add Category</button>
           )}
         </div>
@@ -268,7 +292,14 @@ export default function CategoriesPage() {
                       </div>
                     )}
                     <div>
-                      <h3 className="font-bold text-dark-900 dark:text-white">{cat.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-dark-900 dark:text-white">{cat.name}</h3>
+                        {cat.sortOrder !== undefined && cat.sortOrder !== 999 && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400">
+                            #{cat.sortOrder}
+                          </span>
+                        )}
+                      </div>
                       {platform && (
                         <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: platform.color || '#6366f1' }}>
                           {platform.name}
@@ -330,6 +361,15 @@ export default function CategoriesPage() {
                   className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
               </div>
 
+              {/* Display Order */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Display Order</label>
+                <input type="number" min="1" placeholder="e.g., 1, 2, 3"
+                  value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
+                <p className="text-xs text-dark-400 mt-1">Lower numbers appear first on user dashboard (e.g., 1 = first position, 2 = second position)</p>
+              </div>
+
               {/* Icon Upload */}
               <div>
                 <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Icon / GIF</label>
@@ -359,17 +399,35 @@ export default function CategoriesPage() {
                   className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white resize-none" />
               </div>
 
+              {/* Maintenance Mode Toggle */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
+                  <div className="flex items-center gap-3">
+                    <span className="text-orange-500 text-xl">🔧</span>
+                    <div>
+                      <p className="font-semibold text-dark-900 dark:text-white text-sm">Maintenance Mode</p>
+                      <p className="text-xs text-dark-500">Non-whitelisted users will see "Under Maintenance" for this category</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, maintenance: !form.maintenance })}
+                    className={`relative inline-flex items-center h-8 w-14 rounded-full transition-colors ${form.maintenance ? 'bg-orange-500' : 'bg-gray-400'}`}
+                  >
+                    <span className={`inline-block w-6 h-6 transform bg-white rounded-full transition-transform ${form.maintenance ? 'translate-x-7' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
               {/* Actions */}
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} disabled={saving}
-                  className="flex-1 py-3 rounded-xl border-2 border-dark-200 dark:border-dark-700 text-dark-700 dark:text-dark-300 font-semibold hover:bg-dark-50 dark:hover:bg-dark-800 transition-all">
-                  Cancel
-                </button>
-                <button type="submit" disabled={saving}
-                  className="flex-1 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold transition-all disabled:opacity-60">
-                  {saving ? 'Saving...' : editingCategory ? 'Update' : 'Add Category'}
-                </button>
-              </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setShowModal(false)} disabled={saving}
+                    className="flex-1 py-3 rounded-xl border-2 border-dark-200 dark:border-dark-700 text-dark-700 dark:text-dark-300 font-semibold hover:bg-dark-50 dark:hover:bg-dark-800 transition-all">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={saving}
+                    className="flex-1 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold transition-all disabled:opacity-60">
+                    {saving ? 'Saving...' : editingCategory ? 'Update' : 'Add Category'}
+                  </button>
+                </div>
             </form>
           </div>
         </div>

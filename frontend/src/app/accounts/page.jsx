@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import AccountCard from '@/components/accounts/AccountCard';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -18,14 +18,7 @@ function AccountsContent() {
   const featured = searchParams.get('featured') === 'true' ? true : undefined;
   const [categoryName, setCategoryName] = useState('Accounts');
   
-  // Force component to re-mount when category changes
-  const [mountKey, setMountKey] = useState(0);
-  
   useEffect(() => {
-    // Increment key to force re-mount when URL changes
-    setMountKey(prev => prev + 1);
-    
-    // Fetch category name if categoryId is provided
     if (categoryId) {
       const fetchCategory = async () => {
         const { data } = await getCategories();
@@ -40,7 +33,7 @@ function AccountsContent() {
     } else {
       setCategoryName('Accounts');
     }
-  }, [categoryId, featured]);
+  }, [categoryId]);
   
   const { accounts, loading } = useAccounts({
     categoryId,

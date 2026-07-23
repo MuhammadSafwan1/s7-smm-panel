@@ -9,10 +9,22 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
+  browserLocalPersistence,
+  setPersistence,
 } from 'firebase/auth';
 import app from './firebase.config';
 
 const auth = getAuth(app);
+
+// Set persistence to LOCAL so user stays logged in across browser sessions
+// This prevents automatic logout after closing browser
+setPersistence(auth, browserLocalPersistence)
+  .then(() => {
+    console.log('✅ Firebase Auth Persistence: LOCAL (user will stay logged in)');
+  })
+  .catch((error) => {
+    console.error('⚠️ Firebase Auth Persistence failed:', error);
+  });
 
 // Simple Google Provider Setup
 const googleProvider = new GoogleAuthProvider();
@@ -35,6 +47,8 @@ export const registerWithEmail = async (email, password, displayName) => {
 // Login with email & password
 export const loginWithEmail = async (email, password) => {
   try {
+    // Ensure persistence is set before login
+    await setPersistence(auth, browserLocalPersistence);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return { user: userCredential.user, error: null };
   } catch (error) {
@@ -45,6 +59,8 @@ export const loginWithEmail = async (email, password) => {
 // Simple Google Login with Popup
 export const loginWithGoogle = async () => {
   try {
+    // Ensure persistence is set before login
+    await setPersistence(auth, browserLocalPersistence);
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
     

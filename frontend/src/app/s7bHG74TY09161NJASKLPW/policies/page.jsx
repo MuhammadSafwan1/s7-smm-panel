@@ -45,8 +45,8 @@ export default function PoliciesPage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.title.trim()) { toast.error('Policy title is required'); return; }
-    if (!form.content.trim()) { toast.error('Policy content is required'); return; }
+    if (!form.title.trim()) { toast.error('Question is required'); return; }
+    if (!form.content.trim()) { toast.error('Answer is required'); return; }
     
     setSaving(true);
     try {
@@ -59,13 +59,13 @@ export default function PoliciesPage() {
 
       if (editingPolicy) {
         await updateDoc(doc(db, 'policies', editingPolicy.id), data);
-        toast.success('Policy updated');
+        toast.success('FAQ updated');
       } else {
         await addDoc(collection(db, 'policies'), {
           ...data,
           createdAt: Timestamp.now(),
         });
-        toast.success('Policy added');
+        toast.success('FAQ added');
       }
       setShowModal(false);
       fetchData();
@@ -74,10 +74,10 @@ export default function PoliciesPage() {
   };
 
   const handleDelete = async (id, title) => {
-    if (!confirm(`Delete "${title}"?`)) return;
+    if (!confirm(`Delete this FAQ: "${title}"?`)) return;
     try {
       await deleteDoc(doc(db, 'policies', id));
-      toast.success('Policy deleted');
+      toast.success('FAQ deleted');
       fetchData();
     } catch (err) { toast.error(err.message); }
   };
@@ -97,21 +97,21 @@ export default function PoliciesPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-dark-900 dark:text-white mb-1">Policies</h2>
-          <p className="text-dark-500 dark:text-dark-400 text-sm">Manage website policies and terms</p>
+          <h2 className="text-2xl font-bold text-dark-900 dark:text-white mb-1">FAQs Management</h2>
+          <p className="text-dark-500 dark:text-dark-400 text-sm">Manage Frequently Asked Questions</p>
         </div>
         <button onClick={openAdd} className="btn-primary flex items-center gap-2">
-          <FiPlus /> Add Policy
+          <FiPlus /> Add FAQ
         </button>
       </div>
 
       {/* Grid */}
       {policies.length === 0 ? (
         <div className="glass-card p-16 text-center">
-          <div className="text-5xl mb-4">📜</div>
-          <h3 className="text-xl font-bold text-dark-900 dark:text-white mb-2">No Policies</h3>
-          <p className="text-dark-500 mb-6">Add policies like Terms of Service, Privacy Policy, etc.</p>
-          <button onClick={openAdd} className="btn-primary"><FiPlus className="inline mr-2" />Add Policy</button>
+          <div className="text-5xl mb-4">❓</div>
+          <h3 className="text-xl font-bold text-dark-900 dark:text-white mb-2">No FAQs</h3>
+          <p className="text-dark-500 mb-6">Add Frequently Asked Questions to help your users</p>
+          <button onClick={openAdd} className="btn-primary"><FiPlus className="inline mr-2" />Add FAQ</button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -159,7 +159,7 @@ export default function PoliciesPage() {
           <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
             <div className="flex items-center justify-between px-6 py-5 border-b border-dark-200 dark:border-dark-700">
               <h3 className="text-xl font-bold text-dark-900 dark:text-white">
-                {editingPolicy ? 'Edit Policy' : 'Add Policy'}
+                {editingPolicy ? 'Edit FAQ' : 'Add FAQ'}
               </h3>
               <button type="button" onClick={() => setShowModal(false)}
                 className="w-8 h-8 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 flex items-center justify-center text-dark-500 text-xl">×</button>
@@ -168,16 +168,16 @@ export default function PoliciesPage() {
             <form onSubmit={handleSave} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
               {/* Title */}
               <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Policy Title *</label>
-                <input type="text" required placeholder="e.g., Privacy Policy, Terms of Service"
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Question *</label>
+                <input type="text" required placeholder="e.g., I placed my order a long time ago, why hasn't it started running yet?"
                   value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
                   className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
               </div>
 
               {/* Content */}
               <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Policy Content *</label>
-                <textarea rows="12" required placeholder="Write your policy content here..."
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Answer *</label>
+                <textarea rows="12" required placeholder="Write your answer here..."
                   value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })}
                   className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white resize-none" />
               </div>
@@ -205,7 +205,7 @@ export default function PoliciesPage() {
                 </button>
                 <button type="submit" disabled={saving}
                   className="flex-1 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold disabled:opacity-60">
-                  {saving ? 'Saving...' : editingPolicy ? 'Update' : 'Add Policy'}
+                  {saving ? 'Saving...' : editingPolicy ? 'Update FAQ' : 'Add FAQ'}
                 </button>
               </div>
             </form>

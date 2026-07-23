@@ -7,46 +7,50 @@ import toast from 'react-hot-toast';
 import { FiPlus, FiEdit2, FiTrash2, FiUpload, FiX, FiLink } from 'react-icons/fi';
 import { useCurrency } from '@/context/CurrencyContext';
 
+import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
+
 function IconUpload({ value, onChange }) {
-  const [mode, setMode] = useState('cloudinary');
+  const [mode, setMode] = useState('upload');
   const [urlInput, setUrlInput] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef(null);
 
-  // Cloudinary Upload
-  const uploadToCloudinary = () => {
+  // Direct upload using fetch API (no widget needed)
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10MB');
+      return;
+    }
+
     setUploading(true);
-    
-    if (typeof window !== 'undefined' && window.cloudinary) {
-      const widget = window.cloudinary.createUploadWidget(
-        {
-          cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-          uploadPreset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
-          sources: ['local', 'url', 'camera'],
-          multiple: false,
-          clientAllowedFormats: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
-          maxFileSize: 10000000, // 10MB
-          maxImageWidth: 2000,
-          maxImageHeight: 2000,
-          quality: 'auto:best', // Best quality
-          fetch_format: 'auto',
-        },
-        (error, result) => {
-          setUploading(false);
-          if (error) {
-            toast.error('Upload failed');
-            console.error(error);
-            return;
-          }
-          if (result.event === 'success') {
-            onChange(result.info.secure_url);
-            toast.success('Image uploaded successfully!');
-          }
-        }
-      );
-      widget.open();
-    } else {
+    setUploadProgress(0);
+
+    try {
+      const result = await uploadToCloudinary(file, 'payment-methods', (progress) => {
+        setUploadProgress(progress);
+      });
+
+      if (!result?.url) {
+        throw new Error(result?.error || 'Upload failed');
+      }
+
+      onChange(result.url);
+      toast.success('Image uploaded successfully!');
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error(error.message || 'Upload failed');
+    } finally {
       setUploading(false);
-      toast.error('Cloudinary not loaded. Please refresh.');
+      setUploadProgress(0);
     }
   };
 
@@ -60,8 +64,8 @@ function IconUpload({ value, onChange }) {
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <button type="button" onClick={() => setMode('cloudinary')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'cloudinary' ? 'bg-primary-500 text-white shadow-md' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
+        <button type="button" onClick={() => setMode('upload')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'upload' ? 'bg-primary-500 text-white shadow-md' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
           <FiUpload /> Upload (HD)
         </button>
         <button type="button" onClick={() => setMode('url')}
@@ -70,10 +74,10 @@ function IconUpload({ value, onChange }) {
         </button>
       </div>
 
-      {mode === 'cloudinary' && !value && (
+      {mode === 'upload' && !value && (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-900/30 border border-blue-700/40 text-blue-400 text-sm">
           <FiUpload className="flex-shrink-0" />
-          <span>Upload HD quality images via Cloudinary</span>
+          <span>Upload HD quality images to Cloudinary</span>
         </div>
       )}
 
@@ -86,15 +90,30 @@ function IconUpload({ value, onChange }) {
           </div>
           <button type="button" onClick={() => onChange('')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"><FiX /></button>
         </div>
-      ) : mode === 'cloudinary' ? (
-        <button type="button" onClick={uploadToCloudinary} disabled={uploading}
-          className="w-full flex flex-col items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed border-dark-300 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 bg-dark-50 dark:bg-dark-800 transition-colors cursor-pointer disabled:opacity-50">
-          {uploading ? (
-            <><div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" /><span className="text-sm text-dark-500">Uploading...</span></>
-          ) : (
-            <><FiUpload className="text-3xl text-dark-400" /><span className="text-sm font-medium text-dark-600 dark:text-dark-300">Click to upload (HD Quality)</span></>
-          )}
-        </button>
+      ) : mode === 'upload' ? (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            className="w-full flex flex-col items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed border-dark-300 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 bg-dark-50 dark:bg-dark-800 transition-colors cursor-pointer disabled:opacity-50">
+            {uploading ? (
+              <>
+                <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-dark-500">Uploading... {uploadProgress}%</span>
+                <div className="w-48 h-2 bg-dark-200 dark:bg-dark-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-primary-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              </>
+            ) : (
+              <><FiUpload className="text-3xl text-dark-400" /><span className="text-sm font-medium text-dark-600 dark:text-dark-300">Click to upload (HD Quality)</span></>
+            )}
+          </button>
+        </>
       ) : mode === 'url' ? (
         <div className="flex gap-2">
           <input type="url" placeholder="https://example.com/image.png" value={urlInput}
@@ -129,16 +148,21 @@ export default function PaymentMethodsPage() {
     minAmount: '',
     maxAmount: '',
     feePercent: 3, // Default 3% fee
+    chargeType: 'fee', // NEW: 'fee' or 'bonus'
     isActive: true,
     paymentType: 'manual', // 'auto' or 'manual'
     autoPayEnabled: false, // NEW: Auto payment toggle
     // Custom form field labels
     field1Label: 'Full Name',
     field1Placeholder: 'Your full name',
+    field1Active: true,
     field2Label: 'Account Number',
     field2Placeholder: 'Your account/wallet number',
+    field2Active: true,
     field3Label: 'Transaction ID',
     field3Placeholder: 'Transaction reference number',
+    field3Active: true,
+    qrCode: '', // QR Code for this payment method
   });
 
   // Format amount range like user panel with proper conversion
@@ -207,16 +231,21 @@ export default function PaymentMethodsPage() {
       minAmount: '', 
       maxAmount: '', 
       feePercent: 3, 
+      chargeType: 'fee',
       isActive: true, 
       paymentType: 'manual',
       field1Label: 'Full Name',
       field1Placeholder: 'Your full name',
+      field1Active: true,
       field2Label: 'Account Number',
       field2Placeholder: 'Your account/wallet number',
+      field2Active: true,
       field3Label: 'Transaction ID',
       field3Placeholder: 'Transaction reference number',
+      field3Active: true,
       autoPayEnabled: false,
       autoPayDescription: '',
+      qrCode: '',
     });
     setShowModal(true);
   };
@@ -234,16 +263,21 @@ export default function PaymentMethodsPage() {
       minAmount: method.minAmount || '',
       maxAmount: method.maxAmount || '',
       feePercent: method.feePercent ?? 3,
+      chargeType: method.chargeType || 'fee',
       isActive: method.isActive,
       paymentType: method.paymentType || 'manual',
       field1Label: method.field1Label || 'Full Name',
       field1Placeholder: method.field1Placeholder || 'Your full name',
+      field1Active: method.field1Active !== false,
       field2Label: method.field2Label || 'Account Number',
       field2Placeholder: method.field2Placeholder || 'Your account/wallet number',
+      field2Active: method.field2Active !== false,
       field3Label: method.field3Label || 'Transaction ID',
       field3Placeholder: method.field3Placeholder || 'Transaction reference number',
+      field3Active: method.field3Active !== false,
       autoPayEnabled: method.autoPayEnabled || false,
       autoPayDescription: method.autoPayDescription || '',
+      qrCode: method.qrCode || '',
     });
     setShowModal(true);
   };
@@ -267,16 +301,21 @@ export default function PaymentMethodsPage() {
         minAmount: parseFloat(form.minAmount),
         maxAmount: parseFloat(form.maxAmount),
         feePercent: parseFloat(form.feePercent) || 0,
+        chargeType: form.chargeType, // 'fee' or 'bonus'
         isActive: form.isActive,
         paymentType: form.paymentType,
         field1Label: form.field1Label,
         field1Placeholder: form.field1Placeholder,
+        field1Active: form.field1Active,
         field2Label: form.field2Label,
         field2Placeholder: form.field2Placeholder,
+        field2Active: form.field2Active,
         field3Label: form.field3Label,
         field3Placeholder: form.field3Placeholder,
+        field3Active: form.field3Active,
         autoPayEnabled: form.autoPayEnabled,
         autoPayDescription: form.autoPayDescription,
+        qrCode: form.qrCode,
         updatedAt: Timestamp.now(),
       };
 
@@ -354,6 +393,16 @@ export default function PaymentMethodsPage() {
               <div className="text-xs text-dark-400 space-y-1 mb-4">
                 <p className="font-medium text-dark-600 dark:text-dark-300">Amount Range:</p>
                 <p>{formatAmountRange(parseFloat(method.minAmount), parseFloat(method.maxAmount))}</p>
+                {/* Fee/Bonus Badge */}
+                {method.feePercent > 0 && (
+                  <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${
+                    method.chargeType === 'bonus'
+                      ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
+                      : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
+                  }`}>
+                    {method.chargeType === 'bonus' ? `🎁 +${method.feePercent}% Bonus` : `💸 ${method.feePercent}% Fee`}
+                  </span>
+                )}
               </div>
               
               <div className="flex items-center justify-between">
@@ -424,13 +473,32 @@ export default function PaymentMethodsPage() {
                 </div>
               </div>
 
-              {/* Fee Percent */}
+              {/* Fee/Bonus Selection */}
               <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Fee Percent *</label>
-                <input type="number" step="0.01" min="0" max="100" required placeholder="3"
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Fee or Bonus *</label>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <button type="button" onClick={() => setForm({ ...form, chargeType: 'fee' })}
+                    className={`py-3 rounded-xl text-sm font-medium border-2 transition-all ${form.chargeType === 'fee' ? 'border-red-500 bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-red-400'}`}>
+                    💸 Fee (Deduct)
+                    <p className="text-xs mt-1 font-normal">Charge % deducted from deposit</p>
+                  </button>
+                  <button type="button" onClick={() => setForm({ ...form, chargeType: 'bonus' })}
+                    className={`py-3 rounded-xl text-sm font-medium border-2 transition-all ${form.chargeType === 'bonus' ? 'border-green-500 bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-green-400'}`}>
+                    🎁 Bonus (Add)
+                    <p className="text-xs mt-1 font-normal">Extra % added to deposit</p>
+                  </button>
+                </div>
+                
+                <input type="number" step="0.01" min="0" max="100" required 
+                  placeholder={form.chargeType === 'bonus' ? '5' : '3'}
                   value={form.feePercent} onChange={(e) => setForm({ ...form, feePercent: e.target.value })}
                   className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
-                <p className="text-xs text-dark-400 mt-1">Fee charged on deposits (e.g., 3 for 3%). Set to 0 for no fee.</p>
+                <p className="text-xs text-dark-400 mt-1">
+                  {form.chargeType === 'bonus' 
+                    ? '🎁 Bonus % added (e.g., 5 = user gets 5% extra)'
+                    : '💸 Fee % deducted (e.g., 3 = 3% deducted). Set to 0 for no fee.'
+                  }
+                </p>
               </div>
 
               {/* Image */}
@@ -452,6 +520,13 @@ export default function PaymentMethodsPage() {
                 <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Example Payment Image</label>
                 <IconUpload value={form.exampleImage} onChange={(url) => setForm({ ...form, exampleImage: url })} />
                 <p className="text-xs text-dark-400 mt-1">Upload example/reference image showing how to pay</p>
+              </div>
+
+              {/* NEW: QR Code */}
+              <div>
+                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Payment QR Code</label>
+                <IconUpload value={form.qrCode} onChange={(url) => setForm({ ...form, qrCode: url })} />
+                <p className="text-xs text-dark-400 mt-1">Upload QR code for this payment method (will be shown above amount field)</p>
               </div>
 
               {/* NEW: Instructions/Note */}
@@ -577,56 +652,86 @@ export default function PaymentMethodsPage() {
                 
                 <div className="space-y-4">
                   {/* Field 1 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 1 Label</label>
-                      <input type="text" placeholder="e.g., Full Name"
-                        value={form.field1Label}
-                        onChange={(e) => setForm({ ...form, field1Label: e.target.value })}
-                        className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  <div className="p-3 rounded-lg bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
+                    <div className="flex items-center gap-2 mb-3">
+                      <input type="checkbox" id="field1Active" checked={form.field1Active}
+                        onChange={(e) => setForm({ ...form, field1Active: e.target.checked })}
+                        className="w-4 h-4 rounded border-dark-300 text-primary-500 focus:ring-primary-500 cursor-pointer" />
+                      <label htmlFor="field1Active" className="text-xs font-bold text-dark-700 dark:text-dark-300 cursor-pointer">Show this field to users</label>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 1 Placeholder</label>
-                      <input type="text" placeholder="e.g., Your full name"
-                        value={form.field1Placeholder}
-                        onChange={(e) => setForm({ ...form, field1Placeholder: e.target.value })}
-                        className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 1 Label</label>
+                        <input type="text" placeholder="e.g., Full Name"
+                          value={form.field1Label}
+                          onChange={(e) => setForm({ ...form, field1Label: e.target.value })}
+                          disabled={!form.field1Active}
+                          className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 1 Placeholder</label>
+                        <input type="text" placeholder="e.g., Your full name"
+                          value={form.field1Placeholder}
+                          onChange={(e) => setForm({ ...form, field1Placeholder: e.target.value })}
+                          disabled={!form.field1Active}
+                          className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                      </div>
                     </div>
                   </div>
 
                   {/* Field 2 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 2 Label</label>
-                      <input type="text" placeholder="e.g., Account Number"
-                        value={form.field2Label}
-                        onChange={(e) => setForm({ ...form, field2Label: e.target.value })}
-                        className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  <div className="p-3 rounded-lg bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
+                    <div className="flex items-center gap-2 mb-3">
+                      <input type="checkbox" id="field2Active" checked={form.field2Active}
+                        onChange={(e) => setForm({ ...form, field2Active: e.target.checked })}
+                        className="w-4 h-4 rounded border-dark-300 text-primary-500 focus:ring-primary-500 cursor-pointer" />
+                      <label htmlFor="field2Active" className="text-xs font-bold text-dark-700 dark:text-dark-300 cursor-pointer">Show this field to users</label>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 2 Placeholder</label>
-                      <input type="text" placeholder="e.g., Your account/wallet number"
-                        value={form.field2Placeholder}
-                        onChange={(e) => setForm({ ...form, field2Placeholder: e.target.value })}
-                        className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 2 Label</label>
+                        <input type="text" placeholder="e.g., Account Number"
+                          value={form.field2Label}
+                          onChange={(e) => setForm({ ...form, field2Label: e.target.value })}
+                          disabled={!form.field2Active}
+                          className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 2 Placeholder</label>
+                        <input type="text" placeholder="e.g., Your account/wallet number"
+                          value={form.field2Placeholder}
+                          onChange={(e) => setForm({ ...form, field2Placeholder: e.target.value })}
+                          disabled={!form.field2Active}
+                          className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                      </div>
                     </div>
                   </div>
 
                   {/* Field 3 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 3 Label</label>
-                      <input type="text" placeholder="e.g., Transaction ID"
-                        value={form.field3Label}
-                        onChange={(e) => setForm({ ...form, field3Label: e.target.value })}
-                        className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  <div className="p-3 rounded-lg bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
+                    <div className="flex items-center gap-2 mb-3">
+                      <input type="checkbox" id="field3Active" checked={form.field3Active}
+                        onChange={(e) => setForm({ ...form, field3Active: e.target.checked })}
+                        className="w-4 h-4 rounded border-dark-300 text-primary-500 focus:ring-primary-500 cursor-pointer" />
+                      <label htmlFor="field3Active" className="text-xs font-bold text-dark-700 dark:text-dark-300 cursor-pointer">Show this field to users</label>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 3 Placeholder</label>
-                      <input type="text" placeholder="e.g., Transaction reference number"
-                        value={form.field3Placeholder}
-                        onChange={(e) => setForm({ ...form, field3Placeholder: e.target.value })}
-                        className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 3 Label</label>
+                        <input type="text" placeholder="e.g., Transaction ID"
+                          value={form.field3Label}
+                          onChange={(e) => setForm({ ...form, field3Label: e.target.value })}
+                          disabled={!form.field3Active}
+                          className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-dark-600 dark:text-dark-400 mb-1">Field 3 Placeholder</label>
+                        <input type="text" placeholder="e.g., Transaction reference number"
+                          value={form.field3Placeholder}
+                          onChange={(e) => setForm({ ...form, field3Placeholder: e.target.value })}
+                          disabled={!form.field3Active}
+                          className="w-full px-3 py-2 text-sm bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                      </div>
                     </div>
                   </div>
                 </div>

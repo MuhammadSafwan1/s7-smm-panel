@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, updateDoc, doc, Timestamp, getDoc } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, Timestamp, getDoc, increment, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { FiCheck, FiX, FiEye, FiDownload } from 'react-icons/fi';
 import { useCurrency } from '@/context/CurrencyContext';
@@ -14,6 +14,8 @@ export default function PaymentVerificationPage() {
   const [filter, setFilter] = useState('pending'); // pending, verified, rejected
   const [selectedTx, setSelectedTx] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [fullImage, setFullImage] = useState('');
 
   // Convert PKR amount to selected currency for display
   const formatAmountFromPKR = (pkrAmount) => {
@@ -62,7 +64,13 @@ export default function PaymentVerificationPage() {
     finally { setLoading(false); }
   };
 
-  const filtered = transactions.filter(tx => tx.status === filter);
+  const filtered = transactions
+    .filter(tx => tx.status === filter)
+    .sort((a, b) => {
+      const aTime = a.createdAt?.toDate?.()?.getTime() || new Date(a.createdAt || 0).getTime();
+      const bTime = b.createdAt?.toDate?.()?.getTime() || new Date(b.createdAt || 0).getTime();
+      return bTime - aTime; // descending (newest first)
+    });
 
   const handleVerify = async (id) => {
     try {
@@ -72,9 +80,86 @@ export default function PaymentVerificationPage() {
         return;
       }
 
-      // Calculate 3% fee and remaining amount (allow float with 5 decimals)
-      const feeAmount = parseFloat((tx.amount * 0.03).toFixed(2));
-      const remainingAmount = parseFloat((tx.amount - feeAmount).toFixed(2));
+      // DUPLICATE CHECK: Verify transaction ID hasn't been used before
+      if (tx.transactionId && tx.transactionId.trim()) {
+        const txIdLower = tx.transactionId.trim().toLowerCase();
+        const duplicateTx = transactions.find(t => 
+          t.id !== id && 
+          t.status === 'verified' && 
+          t.transactionId && 
+          t.transactionId.trim().toLowerCase() === txIdLower
+        );
+        
+        if (duplicateTx) {
+          // Auto-reject duplicate
+          await updateDoc(doc(db, 'paymentTransactions', id), {
+            status: 'rejected',
+            rejectedAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+            rejectReason: `Duplicate Transaction ID: This transaction ID has already been verified for ${duplicateTx.userName} (${duplicateTx.userEmail}) on ${new Date(duplicateTx.verifiedAt?.toDate?.() || duplicateTx.verifiedAt).toLocaleDateString()}`
+          });
+          toast.error(
+            `🚫 DUPLICATE DETECTED!\n\n` +
+            `Transaction ID "${tx.transactionId}" was already verified for:\n` +
+            `User: ${duplicateTx.userName}\n` +
+            `Date: ${new Date(duplicateTx.verifiedAt?.toDate?.() || duplicateTx.verifiedAt).toLocaleDateString()}\n\n` +
+            `This transaction has been auto-rejected.`,
+            { duration: 6000 }
+          );
+          setShowModal(false);
+          fetchData();
+          return;
+        }
+      }
+
+      // DUPLICATE CHECK: Verify account number + amount combo hasn't been used
+      if (tx.accountNumber && tx.accountNumber.trim()) {
+        const accNumLower = tx.accountNumber.trim().toLowerCase();
+        const duplicateByAccount = transactions.find(t => 
+          t.id !== id && 
+          t.status === 'verified' && 
+          t.accountNumber && 
+          t.accountNumber.trim().toLowerCase() === accNumLower &&
+          t.amount === tx.amount
+        );
+        
+        if (duplicateByAccount) {
+          await updateDoc(doc(db, 'paymentTransactions', id), {
+            status: 'rejected',
+            rejectedAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+            rejectReason: `Duplicate Payment: Same account number and amount (${formatAmountFromPKR(tx.amount)}) was already verified for ${duplicateByAccount.userName} (${duplicateByAccount.userEmail})`
+          });
+          toast.error(
+            `🚫 DUPLICATE DETECTED!\n\n` +
+            `Same account number (${tx.accountNumber}) with same amount (${formatAmountFromPKR(tx.amount)}) was already verified for:\n` +
+            `User: ${duplicateByAccount.userName}\n` +
+            `Date: ${new Date(duplicateByAccount.verifiedAt?.toDate?.() || duplicateByAccount.verifiedAt).toLocaleDateString()}\n\n` +
+            `This transaction has been auto-rejected.`,
+            { duration: 6000 }
+          );
+          setShowModal(false);
+          fetchData();
+          return;
+        }
+      }
+
+      // Calculate fee/bonus and remaining amount using dynamic feePercent and chargeType from transaction
+      const feePercent = tx.feePercent ?? 0;
+      const chargeType = tx.chargeType || 'fee'; // 'fee' or 'bonus'
+      
+      let finalAmount;
+      let feeOrBonusAmount;
+      
+      if (chargeType === 'bonus') {
+        // Bonus: Add extra to user
+        feeOrBonusAmount = parseFloat((tx.amount * feePercent / 100).toFixed(2));
+        finalAmount = parseFloat((tx.amount + feeOrBonusAmount).toFixed(2));
+      } else {
+        // Fee: Deduct from amount
+        feeOrBonusAmount = parseFloat((tx.amount * feePercent / 100).toFixed(2));
+        finalAmount = parseFloat((tx.amount - feeOrBonusAmount).toFixed(2));
+      }
 
       // CRITICAL VALIDATION: Ensure amounts are reasonable
       if (tx.amount < 1 || tx.amount > 1000000) {
@@ -87,8 +172,10 @@ export default function PaymentVerificationPage() {
         originalAmount: tx.amount,
         currencyUsed: tx.currencyUsed || 'PKR',
         amountEntered: tx.amountEntered,
-        feeAmount: feeAmount,
-        remainingAmount: remainingAmount
+        chargeType: chargeType,
+        feePercent: feePercent,
+        feeOrBonusAmount: feeOrBonusAmount,
+        finalAmount: finalAmount
       });
 
       // Confirm before proceeding
@@ -97,8 +184,8 @@ export default function PaymentVerificationPage() {
         `User: ${tx.userName}\n` +
         `Amount in DB: ₨${tx.amount.toFixed(2)} PKR\n` +
         `${tx.currencyUsed && tx.currencyUsed !== 'PKR' ? `(User paid: ${tx.currencyUsed} ${tx.amountEntered})\n` : ''}` +
-        `Fee (3%): ₨${feeAmount.toFixed(2)} PKR\n` +
-        `Will add to wallet: ₨${remainingAmount.toFixed(2)} PKR\n\n` +
+        `${chargeType === 'bonus' ? `Bonus (${feePercent}%): +₨${feeOrBonusAmount.toFixed(2)} PKR\n` : `Fee (${feePercent}%): -₨${feeOrBonusAmount.toFixed(2)} PKR\n`}` +
+        `Will add to wallet: ₨${finalAmount.toFixed(2)} PKR\n\n` +
         `Click OK to verify and add funds to user's account.`
       );
       
@@ -107,8 +194,8 @@ export default function PaymentVerificationPage() {
       // Update transaction status
       await updateDoc(doc(db, 'paymentTransactions', id), {
         status: 'verified',
-        feeAmount: feeAmount,
-        depositAmount: remainingAmount,
+        feeOrBonusAmount: feeOrBonusAmount,
+        depositAmount: finalAmount,
         verifiedAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
@@ -119,12 +206,12 @@ export default function PaymentVerificationPage() {
       
       if (userSnap.exists()) {
         const currentBalance = userSnap.data().walletBalance || 0;
-        const newBalance = parseFloat((currentBalance + remainingAmount).toFixed(2));
+        const newBalance = parseFloat((currentBalance + finalAmount).toFixed(2));
         
         console.log('Wallet Update:', {
           userId: tx.userId,
           currentBalance: currentBalance,
-          addingAmount: remainingAmount,
+          addingAmount: finalAmount,
           newBalance: newBalance
         });
         
@@ -133,9 +220,45 @@ export default function PaymentVerificationPage() {
           updatedAt: Timestamp.now(),
         });
 
+        // Commission logic: credit referrer if user was referred by someone
+        try {
+          const userDoc = await getDoc(doc(db, 'users', tx.userId));
+          const userData = userDoc.data();
+          if (userData?.referredBy) {
+            const settingsSnap = await getDoc(doc(db, 'siteSettings', 'referral'));
+            const commissionRate = settingsSnap.exists() ? (settingsSnap.data().commissionRate || 5) : 5;
+            const commission = parseFloat((finalAmount * commissionRate / 100).toFixed(2));
+
+            if (commission > 0) {
+              const referrerRef = doc(db, 'users', userData.referredBy);
+              await updateDoc(referrerRef, {
+                referralEarnings: increment(commission),
+                totalCommission: increment(commission),
+                updatedAt: Timestamp.now(),
+              });
+
+              const referralsQuery = query(
+                collection(db, 'referrals'),
+                where('referrerId', '==', userData.referredBy),
+                where('referredUserId', '==', tx.userId)
+              );
+              const referralsSnap = await getDocs(referralsQuery);
+              if (!referralsSnap.empty) {
+                const referralDoc = referralsSnap.docs[0];
+                await updateDoc(doc(db, 'referrals', referralDoc.id), {
+                  commissionEarned: increment(commission),
+                  updatedAt: Timestamp.now(),
+                });
+              }
+            }
+          }
+        } catch (commissionError) {
+          console.error('Commission error:', commissionError);
+        }
+
         toast.success(
           `✅ Payment Verified!\n` +
-          `💰 ₨${remainingAmount.toFixed(2)} added to ${tx.userName}'s wallet\n` +
+          `💰 ₨${finalAmount.toFixed(2)} added to ${tx.userName}'s wallet\n` +
           `New Balance: ₨${newBalance.toFixed(2)}`,
           { duration: 5000 }
         );
@@ -309,12 +432,14 @@ export default function PaymentVerificationPage() {
                 </div>
               </div>
 
-              {/* Fee Breakdown */}
-              <div className="bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-500/10 dark:to-green-500/10 rounded-xl p-4 border-2 border-blue-200 dark:border-blue-500/30">
+              {/* Fee/Bonus Breakdown */}
+              <div className={`bg-gradient-to-r ${(selectedTx.chargeType === 'bonus') ? 'from-green-50 to-emerald-50 dark:from-green-500/10 dark:to-emerald-500/10 border-green-200 dark:border-green-500/30' : 'from-blue-50 to-amber-50 dark:from-blue-500/10 dark:to-amber-500/10 border-blue-200 dark:border-blue-500/30'} rounded-xl p-4 border-2`}>
                 <div className="flex items-start gap-2 mb-3">
-                  <span className="text-xl">💰</span>
+                  <span className="text-xl">{(selectedTx.chargeType === 'bonus') ? '🎁' : '💰'}</span>
                   <div className="flex-1">
-                    <h4 className="font-semibold text-dark-900 dark:text-white">Auto-Add to Wallet (3% Fee)</h4>
+                    <h4 className="font-semibold text-dark-900 dark:text-white">
+                      Auto-Add to Wallet ({selectedTx.feePercent ?? 0}% {(selectedTx.chargeType === 'bonus') ? 'Bonus' : 'Fee'})
+                    </h4>
                     <p className="text-xs text-dark-600 dark:text-dark-400 mt-0.5">
                       When you verify, funds will be automatically added to user's wallet
                     </p>
@@ -325,16 +450,16 @@ export default function PaymentVerificationPage() {
                     <span className="text-dark-600 dark:text-dark-400">Payment Amount:</span>
                     <span className="font-semibold text-dark-900 dark:text-white">{formatAmountFromPKR(selectedTx.amount)}</span>
                   </div>
-                  <div className="flex justify-between text-red-600 dark:text-red-400">
-                    <span>Processing Fee (3%):</span>
+                  <div className={`flex justify-between ${(selectedTx.chargeType === 'bonus') ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    <span>{(selectedTx.chargeType === 'bonus') ? 'Bonus' : 'Processing Fee'} ({selectedTx.feePercent ?? 0}%):</span>
                     <span className="font-semibold">
-                      - {formatAmountFromPKR(parseFloat((selectedTx.amount * 0.03).toFixed(5)))}
+                      {(selectedTx.chargeType === 'bonus') ? '+' : '-'} {formatAmountFromPKR(parseFloat((selectedTx.amount * (selectedTx.feePercent ?? 0) / 100).toFixed(5)))}
                     </span>
                   </div>
-                  <div className="border-t-2 border-green-300 dark:border-green-500/50 pt-2 flex justify-between items-center">
+                  <div className={`border-t-2 ${(selectedTx.chargeType === 'bonus') ? 'border-green-300 dark:border-green-500/50' : 'border-amber-300 dark:border-amber-500/50'} pt-2 flex justify-between items-center`}>
                     <span className="font-semibold text-dark-900 dark:text-white">Will Add to Wallet:</span>
-                    <span className="font-bold text-xl text-green-600 dark:text-green-400">
-                      + {formatAmountFromPKR(parseFloat((selectedTx.amount - selectedTx.amount * 0.03).toFixed(5)))}
+                    <span className={`font-bold text-xl ${(selectedTx.chargeType === 'bonus') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      + {formatAmountFromPKR(parseFloat(((selectedTx.chargeType === 'bonus') ? (selectedTx.amount + selectedTx.amount * (selectedTx.feePercent ?? 0) / 100) : (selectedTx.amount - selectedTx.amount * (selectedTx.feePercent ?? 0) / 100)).toFixed(5)))}
                     </span>
                   </div>
                 </div>
@@ -363,7 +488,24 @@ export default function PaymentVerificationPage() {
               {selectedTx.proofImage && (
                 <div>
                   <h4 className="font-semibold text-dark-900 dark:text-white mb-3">Payment Proof</h4>
-                  <img src={selectedTx.proofImage} alt="Proof" className="w-full max-h-96 object-contain rounded-lg border border-dark-200 dark:border-dark-700 bg-white dark:bg-dark-800 p-2" />
+                  <div 
+                    className="relative cursor-pointer group"
+                    onClick={() => {
+                      setFullImage(selectedTx.proofImage);
+                      setShowImageModal(true);
+                    }}
+                  >
+                    <img 
+                      src={selectedTx.proofImage} 
+                      alt="Proof" 
+                      className="w-full max-h-96 object-contain rounded-lg border border-dark-200 dark:border-dark-700 bg-white dark:bg-dark-800 p-2 transition-transform group-hover:scale-[1.02]" 
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-primary-500 text-white px-4 py-2 rounded-lg font-semibold">
+                        🔍 Click to view full size
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -399,6 +541,30 @@ export default function PaymentVerificationPage() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Image Modal */}
+      {showImageModal && (
+        <div 
+          className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowImageModal(false)}
+        >
+          <button
+            onClick={() => setShowImageModal(false)}
+            className="absolute top-4 right-4 w-12 h-12 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white text-2xl font-bold transition-colors z-10"
+          >
+            ×
+          </button>
+          <img 
+            src={fullImage} 
+            alt="Full Size Proof"
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full text-white text-sm">
+            🔍 Click outside to close
           </div>
         </div>
       )}

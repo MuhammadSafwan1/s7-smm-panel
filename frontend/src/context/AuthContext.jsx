@@ -1,11 +1,13 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { onAuthStateChange } from '@/firebase/auth';
-import { getUserProfile, initializeUserProfile } from '@/firebase/firestore';
+import { getUserProfile } from '@/firebase/firestore';
 import { USER_ROLES } from '@/utils/constants';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
+import { auth } from '@/firebase/firebase.config';
+import { getIdTokenResult } from 'firebase/auth';
 
 const AuthContext = createContext(null);
 
@@ -14,6 +16,45 @@ export function AuthProvider({ children }) {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const tokenRefreshRef = useRef(null);
+
+  // Refresh token every 30 minutes to prevent expiration
+  // Also refresh when page becomes visible again (user returns to tab)
+  useEffect(() => {
+    if (!user) return;
+
+    const refreshToken = async () => {
+      try {
+        if (auth.currentUser) {
+          await getIdTokenResult(auth.currentUser, true); // Force refresh
+          console.log('🔄 Token refreshed successfully');
+        }
+      } catch (e) {
+        console.warn('⚠️ Token refresh failed:', e.message);
+      }
+    };
+
+    // Refresh immediately on mount
+    refreshToken();
+    
+    // Refresh every 30 minutes
+    tokenRefreshRef.current = setInterval(refreshToken, 30 * 60 * 1000);
+    
+    // Refresh when page becomes visible (user switches back to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && auth.currentUser) {
+        console.log('👀 Page visible, refreshing token...');
+        refreshToken();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      if (tokenRefreshRef.current) clearInterval(tokenRefreshRef.current);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user]);
 
   // Update lastSeen every 2 minutes
   useEffect(() => {
@@ -26,16 +67,12 @@ export function AuthProvider({ children }) {
           isOnline: true
         });
       } catch (error) {
-        console.error('Failed to update lastSeen:', error);
+        // Non-critical, ignore
       }
     };
 
-    // Initial update
     updateLastSeen();
-
-    // Update every 2 minutes
     const interval = setInterval(updateLastSeen, 2 * 60 * 1000);
-
     return () => clearInterval(interval);
   }, [user]);
 
@@ -44,28 +81,26 @@ export function AuthProvider({ children }) {
       if (firebaseUser) {
         setUser(firebaseUser);
         
-        // Set user immediately with basic info (don't wait for Firestore)
-        setUserProfile({
+        // Set user immediately with basic info
+        const basicProfile = {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-          role: USER_ROLES.USER,
-          balance: 0,
-        });
+          photoURL: firebaseUser.photoURL || null,
+        };
+        setUserProfile(basicProfile);
         setLoading(false);
         
-        // Try to load full profile in background (non-blocking)
-        initializeUserProfile(firebaseUser.uid, {
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-        }).then(({ data: profile, error }) => {
+        // Load full profile in background
+        try {
+          const { data: profile, error } = await getUserProfile(firebaseUser.uid);
           if (profile && !error) {
             setUserProfile(profile);
             setIsAdmin(profile.role === USER_ROLES.ADMIN);
           }
-        }).catch(err => {
-          console.error('Background profile load error:', err);
-        });
+        } catch (err) {
+          console.warn('Background profile load failed:', err.message);
+        }
       } else {
         setUser(null);
         setUserProfile(null);
