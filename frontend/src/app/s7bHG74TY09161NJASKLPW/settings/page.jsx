@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { FiSave, FiImage, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiTool, FiUserCheck, FiX, FiPlus, FiMessageCircle, FiUpload, FiCheck, FiAlertTriangle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
+import { cachedQuery } from '@/lib/cache';
 
 const PAGE_MAINTENANCE_KEYS = [
   { key: 'dashboard', label: 'Dashboard', desc: 'Main ordering page', icon: '🏠' },
@@ -74,7 +75,7 @@ export default function AdminSettingsPage() {
 
   const fetchAllUsers = async () => {
     try {
-      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const usersSnapshot = await cachedQuery('collection:users', () => getDocs(collection(db, 'users')), 30000);
       const users = usersSnapshot.docs.map(doc => ({
         id: doc.id,
         email: doc.data().email,

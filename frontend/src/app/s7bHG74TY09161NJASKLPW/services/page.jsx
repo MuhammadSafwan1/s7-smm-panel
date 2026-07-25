@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { FiPlus, FiEdit2, FiTrash2, FiFilter, FiChevronDown, FiChevronRight, FiSearch } from 'react-icons/fi';
 import { uploadFile } from '@/firebase/storage';
 import { useCurrency } from '@/context/CurrencyContext';
+import { invalidateCache } from '@/lib/cache';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 const USE_DIRECT_API = true;
@@ -18,11 +19,11 @@ const labelCls = "block text-sm font-semibold text-dark-700 dark:text-dark-300 m
 const EMPTY_FORM = {
   serviceId: '', name: '', platformId: '', categoryId: '',
   providerId: '', providerServiceId: '',
-  price: '', priceUnit: 'per 1000', minQuantity: 100, maxQuantity: 100000,
+  price: '', priceUnit: 'Per 1000', minQuantity: 100, maxQuantity: 100000,
   avgTime: '1-6 Hours', description: '',
   customCommentsRequired: false,
   isActive: true, isFeatured: false, isPopular: false,
-  refillSupported: false, cancelSupported: false, refundSupported: false,
+  refillSupported: false, refillPeriodDays: '', cancelSupported: false, refundSupported: false,
   maintenance: false,
 };
 
@@ -167,7 +168,7 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-bold text-primary-600 dark:text-primary-400">{formatPKR(parseFloat(svc.rate||0))}</p>
-                    <p className="text-xs text-dark-400">per 1000</p>
+                    <p className="text-xs text-dark-400">Per 1000</p>
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); onSelect(svc); }} className="px-3 py-1.5 rounded-lg bg-primary-500 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">Select</button>
                 </div>
@@ -200,6 +201,8 @@ export default function ServicesPage() {
   const [filterCategory, setFilterCategory] = useState('all');
   const [expanded, setExpanded] = useState({});
   const [form, setForm] = useState(EMPTY_FORM);
+  const [servicesDisplayLimit, setServicesDisplayLimit] = useState({});
+  const SERVICES_PER_LOAD = 20;
 
   useEffect(() => { fetchData(); }, []);
 
@@ -241,19 +244,52 @@ export default function ServicesPage() {
         return;
       }
     }
+
+    // Check if Provider Service ID is already used by the same provider
+    if (form.providerId && form.providerServiceId && form.providerServiceId.trim() !== '') {
+      const dupProvider = services.find(
+        svc => svc.providerId === form.providerId &&
+               svc.providerServiceId === form.providerServiceId.trim() &&
+               (!editingService || svc.id !== editingService.id)
+      );
+      if (dupProvider) {
+        const providerName = providers.find(p => p.id === form.providerId)?.name || 'this provider';
+        toast.error(`Provider Service ID "${form.providerServiceId}" is already used for ${providerName} by "${dupProvider.name}"`);
+        return;
+      }
+    }
     
     setSaving(true);
     try {
       if (!editingService && form.maintenance === undefined) form.maintenance = false;
       const data = { ...form, price: parseFloat(form.price)||0, minQuantity: parseInt(form.minQuantity)||100, maxQuantity: parseInt(form.maxQuantity)||100000, updatedAt: Timestamp.now() };
+      
       if (editingService) {
+        // Update existing service
         await updateDoc(doc(db, 'services', editingService.id), data);
+        
+        // 🚀 Update in state without re-fetch (NO reads!)
+        setServices(prev => prev.map(s => s.id === editingService.id ? { ...s, ...data } : s));
         toast.success('Service updated');
       } else {
-        await addDoc(collection(db, 'services'), { ...data, createdAt: Timestamp.now() });
+        // Add new service
+        const docRef = await addDoc(collection(db, 'services'), { ...data, createdAt: Timestamp.now() });
+        
+        // 🚀 Add to state without re-fetch (NO reads!)
+        const newService = { id: docRef.id, ...data, createdAt: Timestamp.now() };
+        setServices(prev => [...prev, newService].sort((a, b) => {
+          const idA = parseInt(a.serviceId) || 0;
+          const idB = parseInt(b.serviceId) || 0;
+          return idA - idB;
+        }));
         toast.success('Service added');
       }
-      setShowModal(false); setForm(EMPTY_FORM); setEditingService(null); fetchData();
+      
+      setShowModal(false); 
+      setForm(EMPTY_FORM); 
+      setEditingService(null);
+      invalidateCache('collection:services');
+      // ❌ Removed: fetchData() - NO re-fetch needed!
     } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
   };
@@ -268,7 +304,7 @@ export default function ServicesPage() {
       providerId: svc.providerId||'',
       providerServiceId: svc.providerServiceId||'',
       price: svc.price,
-      priceUnit: svc.priceUnit || 'per 1000',
+      priceUnit: svc.priceUnit || 'Per 1000',
       minQuantity: svc.minQuantity,
       maxQuantity: svc.maxQuantity,
       avgTime: svc.avgTime||'1-6 Hours',
@@ -278,6 +314,7 @@ export default function ServicesPage() {
       isFeatured: svc.isFeatured||false,
       isPopular: svc.isPopular||false,
       refillSupported: svc.refillSupported||false,
+      refillPeriodDays: svc.refillPeriodDays || '',
       cancelSupported: svc.cancelSupported||false,
       refundSupported: svc.refundSupported||false,
       refundPercent: svc.refundPercent ?? 85,
@@ -292,11 +329,19 @@ export default function ServicesPage() {
 
   const handleDelete = async (id, name) => {
     if (!confirm(`Delete "${name}"?`)) return;
-    await deleteDoc(doc(db, 'services', id)); toast.success('Deleted'); fetchData();
+    await deleteDoc(doc(db, 'services', id)); 
+    
+    // 🚀 Remove from state without re-fetch (NO reads!)
+    setServices(prev => prev.filter(s => s.id !== id));
+    invalidateCache('collection:services');
+    toast.success('Deleted');
   };
 
   const toggleActive = async (svc) => {
-    await updateDoc(doc(db, 'services', svc.id), { isActive: !svc.isActive, updatedAt: Timestamp.now() }); fetchData();
+    await updateDoc(doc(db, 'services', svc.id), { isActive: !svc.isActive, updatedAt: Timestamp.now() }); 
+    
+    // 🚀 Update in state without re-fetch (NO reads!)
+    setServices(prev => prev.map(s => s.id === svc.id ? { ...s, isActive: !s.isActive } : s));
   };
 
   const availableCategories = form.platformId ? categories.filter(c => c.platformId === form.platformId) : [];
@@ -380,7 +425,7 @@ export default function ServicesPage() {
                         {svcs.length === 0
                           ? <div className="px-6 py-4 text-sm text-dark-400 italic">No services. <button onClick={() => openAdd(platform.id, category.id)} className="text-primary-500 hover:underline">Add one</button></div>
                           : <div className="divide-y divide-dark-100 dark:divide-dark-800">
-                            {svcs.map((svc) => (
+                            {svcs.slice(0, servicesDisplayLimit[category.id] || SERVICES_PER_LOAD).map((svc) => (
                               <div key={svc.id} className={`flex items-center gap-3 px-6 py-3 hover:bg-dark-50 dark:hover:bg-dark-800/30 transition-colors group ${!svc.isActive ? 'opacity-50' : ''}`}>
                                 <span className="text-sm font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0">
                                   {svc.serviceId}
@@ -420,6 +465,21 @@ export default function ServicesPage() {
                                 </div>
                               </div>
                             ))}
+                            {svcs.length > (servicesDisplayLimit[category.id] || SERVICES_PER_LOAD) && (
+                              <div className="px-6 py-4 text-center">
+                                <button 
+                                  onClick={() => setServicesDisplayLimit(prev => ({ ...prev, [category.id]: (prev[category.id] || SERVICES_PER_LOAD) + SERVICES_PER_LOAD }))}
+                                  className="text-sm text-primary-500 hover:text-primary-600 font-semibold flex items-center gap-2 mx-auto hover:underline"
+                                >
+                                  <FiChevronDown /> Load More Services ({svcs.length - (servicesDisplayLimit[category.id] || SERVICES_PER_LOAD)} remaining)
+                                </button>
+                              </div>
+                            )}
+                            {(servicesDisplayLimit[category.id] || SERVICES_PER_LOAD) >= svcs.length && svcs.length > SERVICES_PER_LOAD && (
+                              <div className="px-6 py-3 text-center text-xs text-dark-400">
+                                All {svcs.length} services loaded
+                              </div>
+                            )}
                           </div>}
                       </div>
                     ))}
@@ -505,12 +565,12 @@ export default function ServicesPage() {
                   <input 
                     type="text" 
                     required 
-                    placeholder="e.g., per 1000, per 100, per item, each" 
+                    placeholder="e.g., Per 1000, per 100, per item, each" 
                     value={form.priceUnit || ''} 
                     onChange={e => setForm({ ...form, priceUnit: e.target.value })} 
                     className={inputCls} 
                   />
-                  <p className="text-xs text-dark-400 mt-1">How the price is shown (e.g., "per 1000" or "per view")</p>
+                  <p className="text-xs text-dark-400 mt-1">How the price is shown (e.g., "Per 1000" or "per view")</p>
                 </div>
                 <div>
                   <label className={labelCls}>Average Time</label>

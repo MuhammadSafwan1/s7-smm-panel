@@ -188,6 +188,12 @@ service cloud.firestore {
       allow read, write, list: if isAdminUser();
     }
     
+    // Stats counter - public read for homepage, admin write
+    match /stats/{statId} {
+      allow read: if true; // ✅ Public read for homepage stats
+      allow write: if isAdminUser(); // Only admin can update
+    }
+    
     // Admin-only collections with full access
     match /deposits/{depositId} {
       allow read, write, list: if isAdminUser();

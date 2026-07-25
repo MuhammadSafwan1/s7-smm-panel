@@ -72,7 +72,7 @@ export function AuthProvider({ children }) {
     };
 
     updateLastSeen();
-    const interval = setInterval(updateLastSeen, 2 * 60 * 1000);
+    const interval = setInterval(updateLastSeen, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, [user]);
 

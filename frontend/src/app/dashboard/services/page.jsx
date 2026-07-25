@@ -5,13 +5,14 @@ import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { PageLoader, Spinner } from '@/components/common/Loader';
 import { useCurrency } from '@/context/CurrencyContext';
 import {
   FiPackage, FiSearch, FiChevronDown, FiChevronRight,
   FiShoppingBag, FiArrowRight, FiArrowLeft,
 } from 'react-icons/fi';
+import { cachedQuery } from '@/lib/cache';
 
 function ServicesContent() {
   const router = useRouter();
@@ -33,17 +34,17 @@ function ServicesContent() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const settingsDoc = await getDocs(collection(db, 'siteSettings'));
-      const hideUpdatesSettings = settingsDoc.docs.find(d => d.id === 'general')?.data();
+      const settingsDoc = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
+      const hideUpdatesSettings = settingsDoc.data();
       const hideUpdates = hideUpdatesSettings?.hideUpdates || false;
       const lastUpdateTimestamp = hideUpdatesSettings?.lastUpdateTimestamp || 0;
       
       setHideUpdatesTimestamp(hideUpdates ? lastUpdateTimestamp : null);
 
       const [pS, cS, sS] = await Promise.all([
-        getDocs(collection(db, 'platforms')),
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'services')),
+        cachedQuery('collection:platforms', () => getDocs(collection(db, 'platforms')), 300000),
+        cachedQuery('collection:categories', () => getDocs(collection(db, 'categories')), 300000),
+        cachedQuery('collection:services', () => getDocs(collection(db, 'services')), 300000),
       ]);
       const pList = pS.docs.map(d => ({ id: d.id, ...d.data() }))
         .filter(p => p.isActive !== false)
@@ -235,7 +236,7 @@ function ServicesContent() {
                           : <span className="text-white font-bold text-xs sm:text-sm">{platform.name[0]}</span>
                         }
                       </div>
-                      <span className="font-bold text-gray-900 dark:text-white text-sm sm:text-lg truncate">{platform.name}</span>
+                      <span className="font-bold text-gray-900 dark:text-white text-sm sm:text-lg sm:truncate">{platform.name}</span>
                       <span className="text-[10px] sm:text-xs px-1.5 sm:px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-[#253a5e] text-gray-500 dark:text-gray-400 font-medium flex-shrink-0">{count} services</span>
                     </div>
                     {/* Order now shortcut */}
@@ -282,7 +283,7 @@ function ServicesContent() {
                                     {/* Name + meta */}
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
-                                        <span className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white truncate">{svc.name}</span>
+                                        <span className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white sm:truncate">{svc.name}</span>
                                         {isNew(svc) && (
                                           <span className="text-[9px] sm:text-xs px-1 sm:px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold">NEW</span>
                                         )}
@@ -309,7 +310,7 @@ function ServicesContent() {
                                       <p className="text-sm sm:text-base font-bold text-blue-600 dark:text-blue-400">
                                         {format(parseFloat(svc.price || 0))}
                                       </p>
-                                      <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">{svc.priceUnit || 'per 1000'}</p>
+                                      <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">{svc.priceUnit || 'Per 1000'}</p>
                                     </div>
 
                                     {/* Select & Order buttons */}

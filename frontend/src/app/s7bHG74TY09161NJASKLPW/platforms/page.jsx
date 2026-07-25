@@ -5,6 +5,7 @@ import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { FiPlus, FiEdit2, FiTrash2, FiImage, FiUpload, FiX, FiLink, FiTool } from 'react-icons/fi';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 
 function IconUpload({ value, onChange }) {
   const inputRef = useRef();
@@ -230,7 +231,7 @@ export default function PlatformsPage() {
 
   const fetchPlatforms = async () => {
     try {
-      const snap = await getDocs(collection(db, 'platforms'));
+      const snap = await cachedQuery('collection:platforms', () => getDocs(collection(db, 'platforms')), 30000);
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       const sorted = list.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
       setPlatforms(sorted);
@@ -281,7 +282,7 @@ export default function PlatformsPage() {
   };
 
   const handleDelete = async (id, name) => {
-    const snap = await getDocs(collection(db, 'categories'));
+    const snap = await cachedQuery('collection:categories', () => getDocs(collection(db, 'categories')), 30000);
     if (snap.docs.some(d => d.data().platformId === id)) {
       toast.error('Delete all categories under this platform first');
       return;

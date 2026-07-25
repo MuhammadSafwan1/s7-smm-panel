@@ -94,7 +94,7 @@ export default function AnnouncementBell() {
       {/* Bell button */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="relative p-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 border border-amber-200 dark:border-amber-500/30 transition-all"
+        className="relative p-1.5 sm:p-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 border border-amber-200 dark:border-amber-500/30 transition-all"
         title="Announcements"
       >
         <FiBell className="text-amber-600 dark:text-amber-400 text-lg" />
@@ -109,29 +109,29 @@ export default function AnnouncementBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-[#1a2742] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#253a5e] z-50 overflow-hidden animate-slide-down max-h-[70vh] flex flex-col">
+          <div className="absolute right-0 mt-2 w-52 sm:w-96 bg-white dark:bg-[#1a2742] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#253a5e] z-50 overflow-hidden animate-slide-down max-h-[70vh] flex flex-col">
             {/* Header */}
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-[#253a5e] flex items-center justify-between bg-amber-50 dark:bg-amber-500/5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
-                  <FiBell className="text-white text-sm" />
+            <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-100 dark:border-[#253a5e] flex items-center justify-between bg-amber-50 dark:bg-amber-500/5">
+              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/20 flex-shrink-0">
+                  <FiBell className="text-white text-xs sm:text-sm" />
                 </div>
-                <h3 className="font-bold text-gray-900 dark:text-white text-sm">Announcements</h3>
+                <h3 className="font-bold text-gray-900 dark:text-white text-xs sm:text-sm truncate">Announcements</h3>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                 {unreadCount > 0 && (
                   <button
                     onClick={markAllAsSeen}
-                    className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline font-semibold"
+                    className="text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 hover:underline font-semibold whitespace-nowrap"
                   >
                     Mark all read
                   </button>
                 )}
                 <button
                   onClick={() => setOpen(false)}
-                  className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-all"
+                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-all"
                 >
-                  <FiX size={12} />
+                  <FiX size={10} />
                 </button>
               </div>
             </div>
@@ -139,11 +139,11 @@ export default function AnnouncementBell() {
             {/* Announcements list */}
             <div className="overflow-y-auto flex-1">
               {announcements.length === 0 ? (
-                <div className="p-8 text-center">
-                  <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center mx-auto mb-3">
-                    <FiBell className="text-gray-300 dark:text-gray-600" size={20} />
+                <div className="p-6 sm:p-8 text-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center mx-auto mb-2 sm:mb-3">
+                    <FiBell className="text-gray-300 dark:text-gray-600" size={16} />
                   </div>
-                  <p className="text-gray-400 dark:text-gray-500 text-sm">No announcements yet</p>
+                  <p className="text-gray-400 dark:text-gray-500 text-xs sm:text-sm">No announcements yet</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100 dark:divide-[#253a5e]">
@@ -159,18 +159,18 @@ export default function AnnouncementBell() {
                           markAsSeen(a.id);
                           setOpen(false);
                         }}
-                        className={`w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#253a5e]/50 transition-all ${!isSeen ? 'bg-amber-50/50 dark:bg-amber-500/5' : ''}`}
+                        className={`w-full text-left px-3 sm:px-4 py-2.5 sm:py-3 hover:bg-gray-50 dark:hover:bg-[#253a5e]/50 transition-all ${!isSeen ? 'bg-amber-50/50 dark:bg-amber-500/5' : ''}`}
                       >
-                        <div className="flex items-start gap-3">
-                          <div className={`w-9 h-9 rounded-lg ${typeConfig.color} flex items-center justify-center flex-shrink-0 shadow-md`}>
-                            <span className="text-lg">{typeConfig.emoji}</span>
+                        <div className="flex items-start gap-2 sm:gap-3">
+                          <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-lg ${typeConfig.color} flex items-center justify-center flex-shrink-0 shadow-md`}>
+                            <span className="text-sm sm:text-lg">{typeConfig.emoji}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">{a.title}</p>
-                              {!isSeen && <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />}
+                            <div className="flex items-center gap-1 sm:gap-2">
+                              <p className="font-semibold text-xs sm:text-sm text-gray-900 dark:text-white truncate">{a.title}</p>
+                              {!isSeen && <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 flex-shrink-0" />}
                             </div>
-                            <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">{a.message}</p>
+                            <p className="text-[11px] sm:text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">{a.message}</p>
                             <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">
                               {a.createdAt?.toDate?.()?.toLocaleDateString() || 'Just now'}
                             </p>
@@ -193,56 +193,56 @@ export default function AnnouncementBell() {
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100]"
             onClick={() => setSelectedAnnouncement(null)}
           />
-          <div className="fixed inset-0 z-[101] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#1a2742] max-w-lg w-full rounded-2xl shadow-2xl border border-gray-100 dark:border-[#253a5e] animate-slide-up">
+          <div className="fixed inset-0 z-[101] flex items-center justify-center p-2 sm:p-4">
+            <div className="bg-white dark:bg-[#1a2742] max-w-lg w-full rounded-2xl shadow-2xl border border-gray-100 dark:border-[#253a5e] animate-slide-up max-h-[90vh] overflow-y-auto">
               {/* Header */}
-              <div className="border-b border-gray-100 dark:border-[#253a5e] px-6 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500 text-white text-sm font-bold mb-3 shadow-lg shadow-amber-500/20">
-                      <FiBell size={14} />
+              <div className="border-b border-gray-100 dark:border-[#253a5e] px-4 sm:px-6 py-3 sm:py-4">
+                <div className="flex items-start justify-between gap-2 sm:gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-amber-500 text-white text-xs sm:text-sm font-bold mb-2 sm:mb-3 shadow-lg shadow-amber-500/20">
+                      <FiBell size={12} />
                       ANNOUNCEMENT
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-11 h-11 rounded-xl ${getTypeConfig(selectedAnnouncement.type).color} flex items-center justify-center shadow-lg`}>
-                        <span className="text-2xl">{getTypeConfig(selectedAnnouncement.type).emoji}</span>
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl ${getTypeConfig(selectedAnnouncement.type).color} flex items-center justify-center shadow-lg`}>
+                        <span className="text-xl sm:text-2xl">{getTypeConfig(selectedAnnouncement.type).emoji}</span>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getTypeBadgeColor(selectedAnnouncement.type)}`}>
+                      <span className={`px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold border ${getTypeBadgeColor(selectedAnnouncement.type)}`}>
                         {getTypeConfig(selectedAnnouncement.type).label}
                       </span>
                     </div>
                   </div>
                   <button
                     onClick={() => setSelectedAnnouncement(null)}
-                    className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-all"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-all flex-shrink-0"
                   >
-                    <FiX size={16} />
+                    <FiX size={14} />
                   </button>
                 </div>
               </div>
 
               {/* Content */}
-              <div className="p-6 space-y-4">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white leading-tight">
+              <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
+                <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white leading-tight">
                   {selectedAnnouncement.title}
                 </h2>
-                <div className="p-4 rounded-xl bg-gray-50 dark:bg-[#253a5e]/30 border border-gray-100 dark:border-[#253a5e]">
-                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                <div className="p-3 sm:p-4 rounded-xl bg-gray-50 dark:bg-[#253a5e]/30 border border-gray-100 dark:border-[#253a5e]">
+                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed text-sm sm:text-base">
                     {selectedAnnouncement.message}
                   </p>
                 </div>
 
                 {/* Service cards */}
                 {selectedAnnouncement.serviceDetails && selectedAnnouncement.serviceDetails.length > 0 && (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5 sm:space-y-2">
                     {selectedAnnouncement.serviceDetails.map((service, index) => (
-                      <div key={index} className="p-3 rounded-xl bg-gray-50 dark:bg-[#253a5e]/30 border border-gray-100 dark:border-[#253a5e] flex items-start gap-3">
-                        <span className="text-xs px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono font-bold border border-blue-200 dark:border-blue-500/30 flex-shrink-0">
+                      <div key={index} className="p-2.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-[#253a5e]/30 border border-gray-100 dark:border-[#253a5e] flex items-start gap-2 sm:gap-3">
+                        <span className="text-[10px] sm:text-xs px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono font-bold border border-blue-200 dark:border-blue-500/30 flex-shrink-0">
                           #{service.serviceId}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-gray-900 dark:text-white truncate">{service.name}</p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          <p className="font-bold text-xs sm:text-sm text-gray-900 dark:text-white truncate">{service.name}</p>
+                          <p className="text-[11px] sm:text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                             Price: <span className="font-semibold text-blue-600 dark:text-blue-400">{format(parseFloat(service.price || 0))}</span>
                           </p>
                         </div>
@@ -253,7 +253,7 @@ export default function AnnouncementBell() {
 
                 <button
                   onClick={() => setSelectedAnnouncement(null)}
-                  className="w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all"
+                  className="w-full py-2.5 sm:py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all text-sm sm:text-base"
                 >
                   Got it, thanks! 🎉
                 </button>

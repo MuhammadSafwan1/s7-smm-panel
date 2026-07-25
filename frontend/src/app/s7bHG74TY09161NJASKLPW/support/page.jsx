@@ -19,6 +19,7 @@ import {
   getDoc,
 } from 'firebase/firestore';
 import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
+import { cachedQuery } from '@/lib/cache';
 import {
   FiMessageSquare,
   FiSearch,
@@ -244,7 +245,7 @@ export default function AdminSupportPage() {
         expiresAt,
       });
 
-      const chatSnap = await getDoc(doc(db, 'supportChats', selectedChatId));
+      const chatSnap = await cachedQuery(`chat:${selectedChatId}`, () => getDoc(doc(db, 'supportChats', selectedChatId)), 30000);
       const currentUnread = chatSnap.data()?.unreadUser || 0;
 
       await updateDoc(doc(db, 'supportChats', selectedChatId), {
@@ -294,7 +295,7 @@ export default function AdminSupportPage() {
         expiresAt,
       });
 
-      const chatSnap = await getDoc(doc(db, 'supportChats', selectedChatId));
+      const chatSnap = await cachedQuery(`chat:${selectedChatId}`, () => getDoc(doc(db, 'supportChats', selectedChatId)), 30000);
       const currentUnread = chatSnap.data()?.unreadUser || 0;
 
       await updateDoc(doc(db, 'supportChats', selectedChatId), {

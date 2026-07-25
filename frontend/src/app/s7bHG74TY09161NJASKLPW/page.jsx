@@ -10,6 +10,7 @@ import {
   FiTrendingUp, FiClock, FiRefreshCw,
 } from 'react-icons/fi';
 import { Spinner } from '@/components/common/Loader';
+import { cachedQuery } from '@/lib/cache';
 
 export default function AdminDashboard() {
   const { format, currency, rates, currencies } = useCurrency();
@@ -109,12 +110,12 @@ export default function AdminDashboard() {
         todayOrdersSnapshot, todayUsersSnapshot,
         recentOrdersSnapshot, recentUsersSnapshot,
       ] = await Promise.all([
-        getDocs(collection(db, 'users')),
-        getDocs(collection(db, 'orders')),
-        getDocs(collection(db, 'services')),
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'platforms')),
-        getDocs(collection(db, 'providers')),
+        cachedQuery('collection:users', () => getDocs(collection(db, 'users')), 30000),
+        cachedQuery('collection:orders', () => getDocs(collection(db, 'orders')), 30000),
+        cachedQuery('collection:services', () => getDocs(collection(db, 'services')), 30000),
+        cachedQuery('collection:categories', () => getDocs(collection(db, 'categories')), 30000),
+        cachedQuery('collection:platforms', () => getDocs(collection(db, 'platforms')), 30000),
+        cachedQuery('collection:providers', () => getDocs(collection(db, 'providers')), 30000),
         getDocs(query(collection(db, 'orders'), where('createdAt', '>=', todayTimestamp))),
         getDocs(query(collection(db, 'users'),  where('createdAt', '>=', todayTimestamp))),
         getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(5))),
@@ -127,15 +128,15 @@ export default function AdminDashboard() {
       let totalSpent   = 0;
       usersSnapshot.forEach(doc => {
         const d = doc.data();
-        totalBalance += d.balance || d.walletBalance || 0;
+        totalBalance += d.walletBalance || 0;
         totalSpent   += d.totalSpent || 0;
       });
 
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const fiveMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
       let onlineUsers = 0;
       usersSnapshot.forEach(doc => {
         const d = doc.data();
-        // Check lastSeen field (updated by AuthContext every 2 minutes)
+        // Check lastSeen field (updated by AuthContext every 10 minutes)
         const lastSeen = d.lastSeen?.toDate?.() || (d.lastSeen?.seconds ? new Date(d.lastSeen.seconds * 1000) : null);
         if (lastSeen && lastSeen > fiveMinutesAgo) {
           onlineUsers++;

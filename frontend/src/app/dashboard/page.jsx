@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -10,14 +10,15 @@ import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, doc, updateDoc, getDoc, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { useCurrency } from '@/context/CurrencyContext';
+import { cachedQuery } from '@/lib/cache';
 
 function PlatformGrid({ platforms, onSelect, expandedId }) {
   if (platforms.length === 0) {
     return (
-      <div className="text-center py-16 border-2 border-dashed border-dark-200 dark:border-dark-700 rounded-2xl">
-        <FiPackage className="text-5xl text-dark-300 dark:text-dark-600 mx-auto mb-4" />
-        <p className="text-dark-500 font-semibold text-lg mb-1">No platforms yet</p>
-        <p className="text-dark-400 text-sm">The admin hasn't added any platforms yet.</p>
+      <div className="text-center py-12 sm:py-16 border-2 border-dashed border-dark-200 dark:border-dark-700 rounded-2xl px-3">
+        <FiPackage className="text-4xl sm:text-5xl text-dark-300 dark:text-dark-600 mx-auto mb-3 sm:mb-4" />
+        <p className="text-dark-500 font-semibold text-base sm:text-lg mb-1">No platforms yet</p>
+        <p className="text-dark-400 text-xs sm:text-sm">The admin hasn't added any platforms yet.</p>
       </div>
     );
   }
@@ -31,7 +32,7 @@ function PlatformGrid({ platforms, onSelect, expandedId }) {
       <div className="flex justify-center">
         <button
           onClick={() => onSelect(selectedPlatform)}
-          className="group relative flex flex-col items-center gap-4 p-8 rounded-3xl transition-all duration-700 cursor-pointer overflow-hidden border-2 shadow-2xl animate-selected-scale"
+          className="group relative flex flex-col items-center gap-3 sm:gap-4 p-5 sm:p-8 rounded-3xl transition-all duration-700 cursor-pointer overflow-hidden border-2 shadow-2xl animate-selected-scale"
           style={{ 
             backgroundColor: `${selectedPlatform.color || '#1A6BBD'}15`,
             borderColor: `${selectedPlatform.color || '#1A6BBD'}50`,
@@ -53,28 +54,28 @@ function PlatformGrid({ platforms, onSelect, expandedId }) {
           ></div>
 
           {/* Icon - Larger with Glow */}
-          <div className="relative z-10 w-[110px] h-[110px] rounded-3xl flex items-center justify-center transition-all duration-700 shadow-2xl"
+          <div className="relative z-10 w-[80px] h-[80px] sm:w-[110px] sm:h-[110px] rounded-3xl flex items-center justify-center transition-all duration-700 shadow-2xl"
             style={{ 
               backgroundColor: selectedPlatform.color || '#274C75',
               boxShadow: `0 15px 40px -8px ${selectedPlatform.color || '#274C75'}80`
             }}>
             {selectedPlatform.icon ? (
-              <img src={selectedPlatform.icon} alt={selectedPlatform.name} className="w-[68px] h-[68px] object-contain" />
+              <img src={selectedPlatform.icon} alt={selectedPlatform.name} className="w-[50px] h-[50px] sm:w-[68px] sm:h-[68px] object-contain" />
             ) : (
-              <span className="text-5xl font-bold text-white">{selectedPlatform.name[0]}</span>
+              <span className="text-4xl sm:text-5xl font-bold text-white">{selectedPlatform.name[0]}</span>
             )}
           </div>
 
           {/* Name - Larger with Gradient */}
-          <span className="relative z-10 text-xl font-bold text-center bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-200 bg-clip-text text-transparent">
+          <span className="relative z-10 text-base sm:text-xl font-bold text-center bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-200 bg-clip-text text-transparent">
             {selectedPlatform.name}
           </span>
 
           {/* Active indicator - Animated Ping */}
-          <span className="absolute top-4 right-4 flex h-5 w-5 z-20">
+          <span className="absolute top-2 right-2 sm:top-4 sm:right-4 flex h-4 w-4 sm:h-5 sm:w-5 z-20">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" 
               style={{ backgroundColor: selectedPlatform.color || '#1A6BBD' }}></span>
-            <span className="relative inline-flex rounded-full h-5 w-5" 
+            <span className="relative inline-flex rounded-full h-4 w-4 sm:h-5 sm:w-5" 
               style={{ backgroundColor: selectedPlatform.color || '#1A6BBD' }}></span>
           </span>
 
@@ -85,7 +86,7 @@ function PlatformGrid({ platforms, onSelect, expandedId }) {
 
           {/* Maintenance badge */}
           {selectedPlatform.maintenance && (
-            <span className="relative z-10 text-[12px] font-bold px-4 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide animate-pulse">
+            <span className="relative z-10 text-[10px] sm:text-[12px] font-bold px-3 sm:px-4 py-1 sm:py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide animate-pulse">
               🔧 Maintenance
             </span>
           )}
@@ -96,12 +97,12 @@ function PlatformGrid({ platforms, onSelect, expandedId }) {
 
   // If nothing is selected, show all platforms in grid with stagger animation
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
       {platforms.map((platform, index) => (
         <button
           key={platform.id}
           onClick={() => onSelect(platform)}
-          className={`group relative flex flex-col items-center gap-3 p-5 rounded-2xl transition-all duration-500 cursor-pointer overflow-hidden border border-gray-100 dark:border-[#2a4270] hover:border-transparent hover:-translate-y-1 hover:shadow-xl hover:scale-105 animate-item-pop opacity-0 delay-${Math.min(index * 50, 500)}`}
+          className={`group relative flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-5 rounded-2xl transition-all duration-500 cursor-pointer overflow-hidden border border-gray-100 dark:border-[#2a4270] hover:border-transparent hover:-translate-y-1 hover:shadow-xl hover:scale-105 animate-item-pop opacity-0 delay-${Math.min(index * 50, 500)}`}
         >
           {/* Hover gradient border */}
           <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 p-[1px]"
@@ -110,23 +111,23 @@ function PlatformGrid({ platforms, onSelect, expandedId }) {
           </div>
 
           {/* Icon */}
-          <div className="relative z-10 w-[70px] h-[70px] rounded-2xl flex items-center justify-center transition-all duration-500 shadow-lg group-hover:shadow-2xl"
-            style={{ backgroundColor: '#274C75', boxShadow: '0 8px 20px -4px #274C7550' }}>
+          <div className="relative z-10 w-[55px] h-[55px] sm:w-[70px] sm:h-[70px] rounded-2xl flex items-center justify-center transition-all duration-500 shadow-lg group-hover:shadow-2xl"
+            style={{ backgroundColor: platform.color || '#274C75', boxShadow: `0 8px 20px -4px ${platform.color || '#274C75'}50` }}>
             {platform.icon ? (
-              <img src={platform.icon} alt={platform.name} className="w-[44px] h-[44px] object-contain transition-transform duration-500 group-hover:scale-110" />
+              <img src={platform.icon} alt={platform.name} className="w-[35px] h-[35px] sm:w-[44px] sm:h-[44px] object-contain transition-transform duration-500 group-hover:scale-110" />
             ) : (
-              <span className="text-2xl font-bold text-white">{platform.name[0]}</span>
+              <span className="text-xl sm:text-2xl font-bold text-white">{platform.name[0]}</span>
             )}
           </div>
 
           {/* Name */}
-          <span className="relative z-10 text-xs font-semibold text-gray-700 dark:text-gray-200 text-center transition-colors group-hover:text-gray-900 dark:group-hover:text-white">
+          <span className="relative z-10 text-[10px] sm:text-xs font-semibold text-gray-700 dark:text-gray-200 text-center transition-colors group-hover:text-gray-900 dark:group-hover:text-white">
             {platform.name}
           </span>
 
           {/* Maintenance badge */}
           {platform.maintenance && (
-            <span className="relative z-10 text-[11px] font-bold px-3 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide">
+            <span className="relative z-10 text-[9px] sm:text-[11px] font-bold px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 uppercase tracking-wide">
               🔧 Maintenance
             </span>
           )}
@@ -148,21 +149,21 @@ function CategoryGrid({ platform, categories, onSelect, expandedId }) {
   
   if (platformCategories.length === 0) {
     return (
-      <div className="text-center py-12 border-2 border-dashed border-dark-200 dark:border-dark-700 rounded-2xl">
-        <FiPackage className="text-4xl text-dark-300 dark:text-dark-600 mx-auto mb-3" />
-        <p className="text-dark-500 font-semibold text-base mb-1">No categories yet</p>
-        <p className="text-dark-400 text-sm">No categories added for {platform.name}.</p>
+      <div className="text-center py-8 sm:py-12 border-2 border-dashed border-dark-200 dark:border-dark-700 rounded-2xl px-3">
+        <FiPackage className="text-3xl sm:text-4xl text-dark-300 dark:text-dark-600 mx-auto mb-2 sm:mb-3" />
+        <p className="text-dark-500 font-semibold text-sm sm:text-base mb-1">No categories yet</p>
+        <p className="text-dark-400 text-xs sm:text-sm">No categories added for {platform.name}.</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
       {platformCategories.map((cat, index) => (
         <button
           key={cat.id}
           onClick={() => onSelect(cat)}
-          className={`group relative flex flex-col items-center gap-3 p-5 rounded-2xl transition-all duration-500 cursor-pointer overflow-hidden border border-white/20 dark:border-white/10 hover:border-transparent hover:-translate-y-1 hover:shadow-2xl hover:scale-105 animate-item-pop opacity-0 delay-${Math.min(index * 50, 500)}`}
+          className={`group relative flex flex-col items-center gap-2 sm:gap-3 p-3 sm:p-5 rounded-2xl transition-all duration-500 cursor-pointer overflow-hidden border border-white/20 dark:border-white/10 hover:border-transparent hover:-translate-y-1 hover:shadow-2xl hover:scale-105 animate-item-pop opacity-0 delay-${Math.min(index * 50, 500)}`}
           style={{
             background: `linear-gradient(135deg, ${platform.color || '#1A6BBD'}15, transparent)`
           }}
@@ -181,15 +182,15 @@ function CategoryGrid({ platform, categories, onSelect, expandedId }) {
           ></div>
 
           {/* Icon with Platform Color */}
-          <div className="relative z-10 w-[75px] h-[75px] rounded-2xl flex items-center justify-center transition-all duration-500 shadow-lg group-hover:shadow-2xl group-hover:scale-110"
+          <div className="relative z-10 w-[60px] h-[60px] sm:w-[75px] sm:h-[75px] rounded-2xl flex items-center justify-center transition-all duration-500 shadow-lg group-hover:shadow-2xl group-hover:scale-110"
             style={{ 
               backgroundColor: platform.color || '#274C75',
               boxShadow: `0 8px 20px -4px ${platform.color || '#274C75'}50`
             }}>
             {cat.icon ? (
-              <img src={cat.icon} alt={cat.name} className="w-[48px] h-[48px] object-contain transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3" />
+              <img src={cat.icon} alt={cat.name} className="w-[40px] h-[40px] sm:w-[48px] sm:h-[48px] object-contain transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3" />
             ) : (
-              <span className="text-2xl font-bold text-white transition-transform duration-500 group-hover:scale-110">{cat.name[0]}</span>
+              <span className="text-xl sm:text-2xl font-bold text-white transition-transform duration-500 group-hover:scale-110">{cat.name[0]}</span>
             )}
             
             {/* Icon Shine Effect */}
@@ -199,7 +200,7 @@ function CategoryGrid({ platform, categories, onSelect, expandedId }) {
           </div>
 
           {/* Name with Gradient on Hover */}
-          <span className="relative z-10 text-sm font-semibold text-center transition-all duration-300"
+          <span className="relative z-10 text-[10px] sm:text-sm font-semibold text-center transition-all duration-300"
             style={{ 
               color: '#1f2937'
             }}>
@@ -237,6 +238,13 @@ function CategoryGrid({ platform, categories, onSelect, expandedId }) {
 
 function ServicesList({ platform, category, services, onBack, selectedService, onServiceSelect, format }) {
   const [search, setSearch] = useState('');
+  const [displayedServices, setDisplayedServices] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const SERVICES_PER_PAGE = 10;
+  const loadMoreRef = useRef(null);
+  const observerRef = useRef(null);
+  
   const allCategoryServices = services.filter(s => s.categoryId === category.id && s.platformId === platform.id);
   const categoryServices = search
     ? allCategoryServices.filter(s =>
@@ -244,6 +252,39 @@ function ServicesList({ platform, category, services, onBack, selectedService, o
         (s.serviceId && String(s.serviceId).includes(search))
       ).sort((a, b) => parseFloat(a.price || 0) - parseFloat(b.price || 0))
     : allCategoryServices.sort((a, b) => parseFloat(a.price || 0) - parseFloat(b.price || 0));
+
+  // 🚀 Pagination
+  useEffect(() => {
+    const endIndex = page * SERVICES_PER_PAGE;
+    const newDisplayed = categoryServices.slice(0, endIndex);
+    setDisplayedServices(newDisplayed);
+    setHasMore(endIndex < categoryServices.length);
+  }, [categoryServices, page]);
+
+  // 🚀 Infinite scroll
+  useEffect(() => {
+    if (!loadMoreRef.current) return;
+    
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          setPage(prev => prev + 1);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    
+    observerRef.current.observe(loadMoreRef.current);
+    
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, [hasMore]);
+  
+  // Reset page when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   return (
     <div>
@@ -266,8 +307,9 @@ function ServicesList({ platform, category, services, onBack, selectedService, o
           <p className="text-dark-400 text-sm">No services have been added for {platform.name} → {category.name} yet.</p>
         </div>
       ) : (
-        <div className="space-y-2 sm:space-y-3 max-h-[520px] overflow-y-auto pr-1">
-          {categoryServices.map((service) => (
+        <>
+          <div className="space-y-2 sm:space-y-3 max-h-[500px] sm:max-h-[600px] lg:max-h-[700px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-primary-500 scrollbar-track-transparent">
+            {displayedServices.map((service) => (
             <div
               key={service.id}
               onClick={() => onServiceSelect(service)}
@@ -312,7 +354,22 @@ function ServicesList({ platform, category, services, onBack, selectedService, o
               </div>
             </div>
           ))}
+          
+          {/* 🚀 Infinite Scroll Trigger */}
+          {hasMore && displayedServices.length > 0 && (
+            <div ref={loadMoreRef} className="py-4 text-center">
+              <div className="inline-block w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-xs text-dark-400 mt-2">Loading more services...</p>
+            </div>
+          )}
+          
+          {!hasMore && displayedServices.length > 0 && (
+            <div className="py-3 text-center text-xs text-dark-400">
+              All services loaded ({displayedServices.length})
+            </div>
+          )}
         </div>
+        </>
       )}
     </div>
   );
@@ -341,10 +398,12 @@ function DashboardContent() {
   const [platforms, setPlatforms] = useState([]);
   const [categories, setCategories] = useState([]);
   const [services, setServices] = useState([]);
+  const [loadedCategoryIds, setLoadedCategoryIds] = useState(new Set()); // 🚀 Track loaded categories
   const [userOrders, setUserOrders] = useState([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState(0);
   const [totalWebsiteOrders, setTotalWebsiteOrders] = useState(0);
+  const [totalServicesCount, setTotalServicesCount] = useState(0); // 🚀 From stats counter
   const [loading, setLoading] = useState(true);
 
   const [step, setStep] = useState('platforms'); // Start with platforms
@@ -360,7 +419,7 @@ function DashboardContent() {
   useEffect(() => {
     const fetchWhitelist = async () => {
       try {
-        const settingsDoc = await getDoc(doc(db, 'siteSettings', 'general'));
+        const settingsDoc = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
         if (settingsDoc.exists()) {
           const data = settingsDoc.data();
           const whitelist = data.whitelistedEmails || [];
@@ -417,34 +476,27 @@ function DashboardContent() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [platSnap, catSnap, svcSnap, usersSnap, ordersSnap] = await Promise.all([
-        getDocs(collection(db, 'platforms')),
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'services')),
-        getDocs(collection(db, 'users')),
-        getDocs(collection(db, 'orders')),
-      ]);
-
+      // 🚀 OPTIMIZED: Fetch stats counter first (1 read)
+      const statsDocRef = doc(db, 'stats', 'counters');
+      const statsSnap = await getDoc(statsDocRef);
+      
+      if (statsSnap.exists()) {
+        const statsData = statsSnap.data();
+        setTotalUsers(statsData.totalUsers || 0);
+        setTotalWebsiteOrders(statsData.totalOrders || 0);
+        setTotalServicesCount(statsData.totalServices || 0);
+        setOnlineUsers(statsData.onlineUsers || 0);
+        console.log('✅ Dashboard stats loaded from counter:', statsData);
+      } else {
+        console.warn('⚠️ Stats counter not found in dashboard');
+      }
+      
+      // 🚀 OPTIMIZED: Only fetch platforms initially (5-10 reads)
+      const platSnap = await getDocs(collection(db, 'platforms'));
       setPlatforms(platSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.isActive !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
-      
-      // Debug: Log all platforms with maintenance status
-      const allPlatforms = platSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.isActive !== false);
-      console.log('📦 All Platforms:', allPlatforms.map(p => ({
-        name: p.name,
-        maintenance: p.maintenance || false,
-        isActive: p.isActive !== false
-      })));
-      
-      setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.isActive !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
-      setServices(svcSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.isActive !== false));
-      setTotalUsers(usersSnap.docs.length);
-      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-      const onlineCount = usersSnap.docs.filter(doc => {
-        const lastSeen = doc.data().lastSeen?.toMillis?.() || doc.data().lastSeen || 0;
-        return lastSeen > fiveMinutesAgo;
-      }).length;
-      setOnlineUsers(onlineCount);
-      setTotalWebsiteOrders(ordersSnap.docs.length);
+
+      // 🚀 DON'T fetch all services - they'll be lazy loaded per category
+      // This saves 47-500+ reads on initial page load
 
       if (user?.uid) {
         try {
@@ -456,7 +508,7 @@ function DashboardContent() {
     finally { setLoading(false); }
   };
 
-  const handlePlatformSelect = (platform) => {
+  const handlePlatformSelect = async (platform) => {
     console.log('🎯 Platform Selected:', { 
       platform: platform.name, 
       maintenance: platform.maintenance, 
@@ -487,10 +539,25 @@ function DashboardContent() {
       setExpandedCategory(null);
       setSelectedCategory(null);
       setStep('categories');
+      
+      // 🚀 LAZY LOAD: Fetch categories for this platform only
+      if (categories.length === 0) {
+        console.log('📂 Lazy loading categories for:', platform.name);
+        try {
+          const catSnap = await getDocs(
+            query(collection(db, 'categories'), where('platformId', '==', platform.id), where('isActive', '==', true))
+          );
+          const platformCategories = catSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+          setCategories(prevCats => [...prevCats, ...platformCategories]);
+          console.log(`✅ Loaded ${platformCategories.length} categories for ${platform.name}`);
+        } catch (e) {
+          console.error('Error loading categories:', e);
+        }
+      }
     }
   };
 
-  const handleCategorySelect = (category) => {
+  const handleCategorySelect = async (category) => {
     console.log('📂 Category Selected:', {
       category: category.name,
       maintenance: category.maintenance,
@@ -511,6 +578,34 @@ function DashboardContent() {
     // Show services in the same area (not panel)
     setSelectedCategory(category);
     setStep('services');
+    
+    // 🚀 LAZY LOAD: Fetch services for this category only (prevent duplicate reads)
+    if (!loadedCategoryIds.has(category.id)) {
+      console.log('🔧 Lazy loading services for:', category.name);
+      setLoadedCategoryIds(prev => new Set(prev).add(category.id)); // Mark as loaded BEFORE fetching
+      try {
+        const svcSnap = await getDocs(
+          query(
+            collection(db, 'services'), 
+            where('categoryId', '==', category.id),
+            where('platformId', '==', selectedPlatform.id),
+            where('isActive', '==', true)
+          )
+        );
+        const categoryServices = svcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setServices(prevSvcs => [...prevSvcs, ...categoryServices]);
+        console.log(`✅ Loaded ${categoryServices.length} services for ${category.name}`);
+      } catch (e) {
+        console.error('Error loading services:', e);
+        setLoadedCategoryIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(category.id); // Remove from loaded if error
+          return newSet;
+        });
+      }
+    } else {
+      console.log(`⚡ Services for ${category.name} already loaded, skipping fetch (preventing duplicate read)`);
+    }
   };
 
   const handleServiceSelect = (service) => {
@@ -584,7 +679,7 @@ function DashboardContent() {
         providerId: selectedService.providerId || null, providerName, providerServiceId: selectedService.providerServiceId || null, providerOrderId,
         link: orderData.link, quantity: qty, charge: totalCharge, comments: orderData.comments || '',
         cancelSupported: selectedService.cancelSupported || false, refillSupported: selectedService.refillSupported || false,
-        refillPeriodDays: parseInt(selectedService.refillPeriodDays || 30), status: providerOrderId ? 'processing' : 'pending',
+        refillPeriodDays: parseInt(selectedService.refillPeriodDays || 0), status: providerOrderId ? 'processing' : 'pending',
         createdAt: new Date(), updatedAt: new Date(),
       });
       const userRef = doc(db, 'users', user.uid);
@@ -667,117 +762,117 @@ function DashboardContent() {
     <div className="min-h-screen py-6">
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <div className="flex items-center justify-between mb-4 sm:mb-6 flex-wrap gap-3 sm:gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-0.5">Manage your orders and explore services</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+            <p className="text-gray-400 dark:text-gray-500 text-xs sm:text-sm mt-0.5">Manage your orders and explore services</p>
           </div>
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#1e3050] p-1 rounded-xl">
-            <Link href="/dashboard" className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-[#253a5e] text-gray-900 dark:text-white shadow-sm transition-all">
-              <FiShoppingBag className="text-primary-500" /> Order
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#1e3050] p-1 rounded-xl w-full sm:w-auto">
+            <Link href="/dashboard" className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-white dark:bg-[#253a5e] text-gray-900 dark:text-white shadow-sm transition-all">
+              <FiShoppingBag className="text-primary-500" size={14} /> Order
             </Link>
-            <Link href="/dashboard/services" className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-400 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-[#253a5e]/50 transition-all">
-              <FiList className="text-gray-400" /> Services
+            <Link href="/dashboard/services" className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold text-gray-400 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-[#253a5e]/50 transition-all">
+              <FiList className="text-gray-400" size={14} /> Services
             </Link>
           </div>
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 mb-6 sm:mb-8">
           {/* Balance */}
-          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-blue">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30">
-                <FiDollarSign className="text-white" size={18} />
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-3 sm:p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-blue">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30">
+                <FiDollarSign className="text-white" size={14} />
               </div>
-              <p className="text-xs text-gray-400 font-medium">Balance</p>
+              <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Balance</p>
             </div>
-            <p className="text-lg font-bold text-gray-900 dark:text-white truncate mb-3">{displayBalance(userProfile?.walletBalance || 0)}</p>
-            <Link href="/dashboard/add-funds" className="flex items-center justify-center gap-1 w-full py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md shadow-blue-600/20">+ Add Funds</Link>
+            <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white truncate mb-2 sm:mb-3">{displayBalance(userProfile?.walletBalance || 0)}</p>
+            <Link href="/dashboard/add-funds" className="flex items-center justify-center gap-1 w-full py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md shadow-blue-600/20">+ Add Funds</Link>
           </div>
           {/* Orders */}
-          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-emerald">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/30">
-                <FiShoppingBag className="text-white" size={18} />
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-3 sm:p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-emerald">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-600/30">
+                <FiShoppingBag className="text-white" size={14} />
               </div>
-              <p className="text-xs text-gray-400 font-medium">My Orders</p>
+              <p className="text-[10px] sm:text-xs text-gray-400 font-medium">My Orders</p>
             </div>
-            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{userOrders.length}</p>
-            <Link href="/dashboard/orders" className="flex items-center justify-center gap-1 w-full py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-md shadow-emerald-600/20">View</Link>
+            <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white mb-2 sm:mb-3">{userOrders.length}</p>
+            <Link href="/dashboard/orders" className="flex items-center justify-center gap-1 w-full py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-md shadow-emerald-600/20">View</Link>
           </div>
           {/* Services */}
-          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-violet">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center shadow-lg shadow-violet-600/30">
-                <FiPackage className="text-white" size={18} />
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-3 sm:p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-violet">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-violet-600 flex items-center justify-center shadow-lg shadow-violet-600/30">
+                <FiPackage className="text-white" size={14} />
               </div>
-              <p className="text-xs text-gray-400 font-medium">Services</p>
+              <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Services</p>
             </div>
-            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{services.length}</p>
-            <Link href="/dashboard/services" className="flex items-center justify-center gap-1 w-full py-2 rounded-lg text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white transition-all shadow-md shadow-violet-600/20">Browse</Link>
+            <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white mb-2 sm:mb-3">{totalServicesCount.toLocaleString()}</p>
+            <Link href="/dashboard/services" className="flex items-center justify-center gap-1 w-full py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white transition-all shadow-md shadow-violet-600/20">Browse</Link>
           </div>
           {/* Users */}
-          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-sky">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shadow-lg shadow-sky-600/30">
-                <FiUsers className="text-white" size={18} />
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-3 sm:p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-sky">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-sky-600 flex items-center justify-center shadow-lg shadow-sky-600/30">
+                <FiUsers className="text-white" size={14} />
               </div>
-              <p className="text-xs text-gray-400 font-medium">Total Users</p>
+              <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Total Users</p>
             </div>
-            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{totalUsers.toLocaleString()}</p>
-            <div className="flex items-center justify-center w-full py-2 rounded-lg text-xs font-bold bg-sky-600/15 text-sky-400">Registered</div>
+            <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white mb-2 sm:mb-3">{totalUsers.toLocaleString()}</p>
+            <div className="flex items-center justify-center w-full py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold bg-sky-600/15 text-sky-400">Registered</div>
           </div>
           {/* Online */}
-          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-green">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/30 relative">
-                <FiUsers className="text-white" size={18} />
-                <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-3 sm:p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-green">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/30 relative">
+                <FiUsers className="text-white" size={14} />
+                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2 sm:h-2.5 sm:w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 sm:h-2.5 sm:w-2.5 bg-green-400"></span>
                 </span>
               </div>
-              <p className="text-xs text-gray-400 font-medium">Online Users</p>
+              <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Online Users</p>
             </div>
-            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{onlineUsers.toLocaleString()}</p>
-            <div className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-bold bg-green-600/15 text-green-400">
+            <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white mb-2 sm:mb-3">{onlineUsers.toLocaleString()}</p>
+            <div className="flex items-center justify-center gap-1.5 w-full py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold bg-green-600/15 text-green-400">
               <span className="flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400"></span></span>
               Active Now
             </div>
           </div>
           {/* Total Orders */}
-          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-orange">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
-                <span className="text-base">📊</span>
+          <div className="group bg-white dark:bg-[#1a2742] rounded-2xl p-3 sm:p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300 stat-card stat-card-orange">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
+                <span className="text-sm sm:text-base">📊</span>
               </div>
-              <p className="text-xs text-gray-400 font-medium">Total Orders</p>
+              <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Total Orders</p>
             </div>
-            <p className="text-lg font-bold text-gray-900 dark:text-white mb-3">{totalWebsiteOrders.toLocaleString()}</p>
-            <div className="flex items-center justify-center w-full py-2 rounded-lg text-xs font-bold bg-orange-500/15 text-orange-400">Website</div>
+            <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white mb-2 sm:mb-3">{totalWebsiteOrders.toLocaleString()}</p>
+            <div className="flex items-center justify-center w-full py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold bg-orange-500/15 text-orange-400">Website</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             {/* Show Platform + Categories only when NOT showing services */}
             {step !== 'services' && (
               <>
                 {/* Platforms Section */}
-                <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-6 border border-gray-100 dark:border-[#253a5e]">
-                  <div className="flex items-center gap-3 mb-5">
+                <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-4 sm:p-6 border border-gray-100 dark:border-[#253a5e]">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-5">
                     {expandedPlatform && (
-                      <button onClick={() => { setExpandedPlatform(null); setExpandedCategory(null); setSelectedPlatform(null); setSelectedCategory(null); setStep('platforms'); }} className="flex items-center justify-center w-8 h-8 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72] transition-all">
-                        <FiArrowLeft size={16} />
+                      <button onClick={() => { setExpandedPlatform(null); setExpandedCategory(null); setSelectedPlatform(null); setSelectedCategory(null); setStep('platforms'); }} className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gray-100 dark:bg-[#253a5e] text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72] transition-all">
+                        <FiArrowLeft size={14} />
                       </button>
                     )}
                     <div>
-                      <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">
                         {!expandedPlatform ? 'Choose a Platform' : `${expandedPlatform.name}`}
                       </h2>
                       {expandedPlatform && (
-                        <p className="text-sm text-gray-400 mt-0.5">Select a category below</p>
+                        <p className="text-xs sm:text-sm text-gray-400 mt-0.5">Select a category below</p>
                       )}
                     </div>
                   </div>
@@ -908,8 +1003,8 @@ function DashboardContent() {
           {/* Remove Services Slide-in Panel - services now show in main area */}
 
           <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-6 border border-gray-100 dark:border-[#253a5e] sticky top-24">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Place Order</h2>
+            <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-4 sm:p-6 border border-gray-100 dark:border-[#253a5e] sticky top-24 max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-thin scrollbar-thumb-primary-500 scrollbar-track-transparent">
+              <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white mb-3 sm:mb-4">Place Order</h2>
 
               {selectedService ? (
                 <form onSubmit={handleOrderSubmit} className="space-y-4">

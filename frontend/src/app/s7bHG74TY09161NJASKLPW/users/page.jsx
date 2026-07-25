@@ -116,8 +116,8 @@ export default function UsersManagement() {
             }, 0);
             
             // Check if user is online (active in last 5 minutes)
-            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-            userData.isOnline = userData.lastActive && userData.lastActive.toDate() > fiveMinutesAgo;
+            const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+            userData.isOnline = userData.lastActive && userData.lastActive.toDate() > tenMinutesAgo;
           } catch (err) {
             userData.orderCount = 0;
             userData.totalSpent = 0;
@@ -190,7 +190,6 @@ export default function UsersManagement() {
       
       await updateDoc(userRef, {
         walletBalance: newBalance,
-        balance: newBalance, // Update both fields for compatibility
         updatedAt: Timestamp.now(),
       });
       

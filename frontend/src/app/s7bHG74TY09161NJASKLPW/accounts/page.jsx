@@ -7,6 +7,7 @@ import { FiPlus, FiEdit2, FiTrash2, FiImage, FiX } from 'react-icons/fi';
 import { Spinner } from '@/components/common/Loader';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 
 export default function AccountsManagement() {
   const [accounts, setAccounts] = useState([]);
@@ -38,7 +39,7 @@ export default function AccountsManagement() {
     try {
       const [accountsSnapshot, categoriesSnapshot] = await Promise.all([
         getDocs(collection(db, 'accounts')),
-        getDocs(collection(db, 'categories')),
+        cachedQuery('collection:categories', () => getDocs(collection(db, 'categories')), 30000),
       ]);
 
       const accountsData = accountsSnapshot.docs.map((doc) => ({

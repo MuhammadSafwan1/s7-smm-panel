@@ -25,6 +25,7 @@ const proxyRoutes = require('./routes/proxy.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const userRoutes = require('./routes/user.routes');
 const apiV1Routes = require('./routes/api.routes');
+const verificationRoutes = require('./routes/verification.routes'); // ✅ Added
 const { errorHandler, notFound } = require('./middleware/error.middleware');
 
 const app = express();
@@ -99,6 +100,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Routes with specific rate limiting
+app.use('/api/verification', rateLimitConfigs.auth, verificationRoutes); // ✅ Added verification routes
 app.use('/api/upload', uploadRoutes);
 app.use('/api/proxy', proxyRoutes);
 app.use('/api/user', rateLimitConfigs.auth, userRoutes); // Auth rate limiting for user routes

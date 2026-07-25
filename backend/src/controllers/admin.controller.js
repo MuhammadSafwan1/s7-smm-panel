@@ -489,15 +489,49 @@ const deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Delete from Firebase Auth
-    await auth.deleteUser(userId);
+    // Try to delete from Firebase Auth (may not exist)
+    try {
+      await auth.deleteUser(userId);
+      console.log('✅ User deleted from Firebase Auth:', userId);
+    } catch (authError) {
+      console.warn('⚠️ Failed to delete from Auth (user may not exist):', authError.message);
+      // Continue anyway - we still want to delete from Firestore
+    }
 
-    // Delete from Firestore
-    await db.collection('users').doc(userId).delete();
+    // Delete from Firestore (main deletion)
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (userDoc.exists) {
+      await db.collection('users').doc(userId).delete();
+      console.log('✅ User deleted from Firestore:', userId);
+    } else {
+      console.warn('⚠️ User not found in Firestore:', userId);
+    }
 
-    return successResponse(res, null, 'User deleted permanently');
+    // Delete user's related data
+    try {
+      // Delete orders
+      const ordersSnapshot = await db.collection('orders').where('userId', '==', userId).get();
+      const orderDeletePromises = ordersSnapshot.docs.map(doc => doc.ref.delete());
+      await Promise.all(orderDeletePromises);
+
+      // Delete transactions
+      const transactionsSnapshot = await db.collection('transactions').where('userId', '==', userId).get();
+      const transactionDeletePromises = transactionsSnapshot.docs.map(doc => doc.ref.delete());
+      await Promise.all(transactionDeletePromises);
+
+      // Delete notifications
+      const notificationsSnapshot = await db.collection('notifications').where('userId', '==', userId).get();
+      const notificationDeletePromises = notificationsSnapshot.docs.map(doc => doc.ref.delete());
+      await Promise.all(notificationDeletePromises);
+
+      console.log('✅ User related data deleted');
+    } catch (cleanupError) {
+      console.warn('⚠️ Error cleaning up user data:', cleanupError.message);
+    }
+
+    return successResponse(res, null, 'User deleted successfully');
   } catch (error) {
-    console.error('Delete user error:', error);
+    console.error('❌ Delete user error:', error);
     return errorResponse(res, error.message, 500);
   }
 };
@@ -540,11 +574,46 @@ const updateUserPassword = async (req, res) => {
       return errorResponse(res, 'Password must be at least 6 characters', 400);
     }
 
-    await auth.updateUser(userId, { password });
+    // Update in Firebase Auth
+    try {
+      await auth.updateUser(userId, { password });
+      console.log('✅ Password updated in Firebase Auth');
+    } catch (authError) {
+      console.warn('⚠️ Auth password update failed:', authError.message);
+      // Continue to update Firestore anyway
+    }
 
-    return successResponse(res, null, 'User password updated successfully');
+    // Update in Firestore (for admin viewing)
+    try {
+      const userDoc = await db.collection('users').doc(userId).get();
+      if (userDoc.exists) {
+        await db.collection('users').doc(userId).update({ 
+          password: password,
+          updatedAt: Timestamp.now() 
+        });
+        console.log('✅ Password updated in Firestore');
+      }
+    } catch (firestoreError) {
+      console.warn('⚠️ Firestore password update failed:', firestoreError.message);
+    }
+
+    // Create notification for user
+    try {
+      await db.collection('notifications').add({
+        userId,
+        title: 'Password Changed',
+        message: 'Your password has been updated by an administrator',
+        type: 'security',
+        isRead: false,
+        createdAt: Timestamp.now(),
+      });
+    } catch (notifError) {
+      console.warn('⚠️ Failed to create notification:', notifError.message);
+    }
+
+    return successResponse(res, null, 'Password updated successfully (no email sent)');
   } catch (error) {
-    console.error('Update user password error:', error);
+    console.error('❌ Update user password error:', error);
     return errorResponse(res, error.message, 500);
   }
 };

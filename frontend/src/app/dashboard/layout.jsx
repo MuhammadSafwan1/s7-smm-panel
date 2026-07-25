@@ -9,6 +9,7 @@ import MaintenanceMessage from '@/components/common/MaintenanceMessage';
 import { PageLoader } from '@/components/common/Loader';
 import BanCheck from '@/components/common/BanCheck';
 import { usePathname } from 'next/navigation';
+import { cachedQuery } from '@/lib/cache';
 
 export default function DashboardLayout({ children }) {
   const { user } = useAuth();
@@ -42,7 +43,7 @@ export default function DashboardLayout({ children }) {
 
   const checkSettings = async () => {
     try {
-      const settingsDoc = await getDoc(doc(db, 'siteSettings', 'general'));
+      const settingsDoc = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
       if (settingsDoc.exists()) {
         const data = settingsDoc.data();
         const maintenance = data.maintenanceMode || false;

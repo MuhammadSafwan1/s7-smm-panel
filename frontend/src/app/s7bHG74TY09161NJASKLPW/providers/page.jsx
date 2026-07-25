@@ -14,6 +14,7 @@ import {
 } from 'react-icons/fi';
 import { Spinner } from '@/components/common/Loader';
 import toast from 'react-hot-toast';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 
 export default function ProvidersPage() {
   const [providers, setProviders] = useState([]);
@@ -51,8 +52,8 @@ export default function ProvidersPage() {
   const fetchPlatformsAndCategories = async () => {
     try {
       const [platformsSnap, categoriesSnap] = await Promise.all([
-        getDocs(collection(db, 'platforms')),
-        getDocs(collection(db, 'categories')),
+        cachedQuery('collection:platforms', () => getDocs(collection(db, 'platforms')), 30000),
+        cachedQuery('collection:categories', () => getDocs(collection(db, 'categories')), 30000),
       ]);
       setPlatforms(platformsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setCategories(categoriesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -63,7 +64,7 @@ export default function ProvidersPage() {
 
   const fetchProviders = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'providers'));
+      const querySnapshot = await cachedQuery('collection:providers', () => getDocs(collection(db, 'providers')), 30000);
       const providersList = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -129,7 +130,7 @@ export default function ProvidersPage() {
     
     try {
       // Step 1: Get all services from this provider
-      const servicesSnapshot = await getDocs(collection(db, 'services'));
+      const servicesSnapshot = await cachedQuery('collection:services', () => getDocs(collection(db, 'services')), 30000);
       const providerServices = servicesSnapshot.docs.filter(
         doc => doc.data().providerId === id
       );
@@ -148,6 +149,8 @@ export default function ProvidersPage() {
         { id: loadingToast }
       );
       
+      invalidateCache('collection:services');
+      invalidateCache('collection:providers');
       fetchProviders();
     } catch (error) {
       toast.error(error.message || 'Failed to delete provider', { id: loadingToast });
@@ -170,7 +173,7 @@ export default function ProvidersPage() {
       });
       
       // Step 2: Get all services from this provider
-      const servicesSnapshot = await getDocs(collection(db, 'services'));
+      const servicesSnapshot = await cachedQuery('collection:services', () => getDocs(collection(db, 'services')), 30000);
       const providerServices = servicesSnapshot.docs.filter(
         doc => doc.data().providerId === provider.id
       );

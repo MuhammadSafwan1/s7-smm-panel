@@ -70,10 +70,10 @@ function RegisterForm() {
       return;
     }
 
-    const { success, error: regError } = await register(email, password, name);
+    const { success, error: regError, emailSent } = await register(email, password, name);
     if (success) {
-      toast.success('Account created successfully! Please login to continue.');
-      router.push('/auth/login');
+      toast.success('Account created! Please check your email for verification link.', { duration: 6000 });
+      router.push('/auth/login?verified=pending');
     } else {
       const errorMsg = regError?.includes('email-already-in-use')
         ? 'Email already registered. Please login or use another email.'

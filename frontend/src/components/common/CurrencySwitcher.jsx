@@ -19,15 +19,15 @@ export default function CurrencySwitcher() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
+        className="flex items-center gap-1.5 px-1.5 sm:px-2.5 py-1.5 rounded-lg
           bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700
           text-dark-700 dark:text-dark-300 text-sm font-semibold
           border border-dark-200 dark:border-dark-700
           transition-all duration-200"
         title="Change currency"
       >
-        <span className="text-base leading-none">{currentCurrency.flag}</span>
-        <span>{currentCurrency.code}</span>
+        <span className="text-base leading-none max-sm:hidden">{currentCurrency.flag}</span>
+        <span className="max-sm:text-xs">{currentCurrency.code}</span>
         {loading
           ? <FiRefreshCw className="text-xs animate-spin text-primary-500" />
           : <FiChevronDown className={`text-xs transition-transform ${open ? 'rotate-180' : ''}`} />}

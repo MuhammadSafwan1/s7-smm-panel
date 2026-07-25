@@ -465,12 +465,12 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-2xl space-y-6">
+    <div className="min-h-screen flex items-center justify-center px-3 sm:px-4 py-8 sm:py-12">
+      <div className="w-full max-w-2xl space-y-4 sm:space-y-6">
         {/* Profile Settings Card */}
         <div className="glass-card p-4 sm:p-6 lg:p-8">
           <div className="text-center mb-6 sm:mb-8">
-            <div className="relative w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4">
+            <div className="relative w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-3 sm:mb-4">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden ring-4 ring-primary-500/20">
                 {profileImagePreview ? (
                   <img

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { FaWhatsapp } from 'react-icons/fa';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
+import { cachedQuery } from '@/lib/cache';
 
 export default function WhatsAppButton() {
   const [whatsappUrl, setWhatsappUrl] = useState('https://whatsapp.com/channel/0029Vb5txzUJkK714Q3onN1l');
@@ -15,8 +16,7 @@ export default function WhatsAppButton() {
 
   const fetchWhatsAppSettings = async () => {
     try {
-      const settingsRef = doc(db, 'siteSettings', 'general');
-      const settingsSnap = await getDoc(settingsRef);
+      const settingsSnap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
       
       if (settingsSnap.exists()) {
         const data = settingsSnap.data();

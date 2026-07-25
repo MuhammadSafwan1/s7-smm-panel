@@ -159,7 +159,6 @@ export default function AdminLayout({ children }) {
               displayName: user.displayName || user.email,
               role: 'admin',
               walletBalance: 0,
-              balance: 0,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });

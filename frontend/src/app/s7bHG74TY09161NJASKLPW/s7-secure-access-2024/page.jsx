@@ -9,6 +9,7 @@ import { db } from '@/firebase/firestore';
 import toast from 'react-hot-toast';
 import { FiLock, FiShield } from 'react-icons/fi';
 import { FcGoogle } from 'react-icons/fc';
+import { cachedQuery } from '@/lib/cache';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function AdminLoginPage() {
     const checkAdminAuth = async () => {
       const user = auth.currentUser;
       if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userDoc = await cachedQuery(`user:${user.uid}`, () => getDoc(doc(db, 'users', user.uid)), 30000);
         const userData = userDoc.data();
         const ownerEmail = 'ms8347750@gmail.com';
         const editorEmail = 'ms4746845@gmail.com';

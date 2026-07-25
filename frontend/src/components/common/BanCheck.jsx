@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
 import { useRouter, usePathname } from 'next/navigation';
 import { FiAlertTriangle, FiClock, FiShield } from 'react-icons/fi';
@@ -87,20 +87,12 @@ export default function BanCheck({ children }) {
 
   const checkBanStatus = async () => {
     try {
-      if (!user?.uid) {
+      if (!user?.uid || !userProfile) {
         setChecking(false);
         return;
       }
 
-      const userRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userRef);
-
-      if (!userDoc.exists()) {
-        setChecking(false);
-        return;
-      }
-
-      const userData = userDoc.data();
+      const userData = userProfile;
       
       console.log('🔍 Ban Check:', {
         uid: user.uid,

@@ -192,10 +192,10 @@ export default function Navbar() {
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 md:h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 group hover:opacity-90 transition-opacity flex-shrink-0">
-            <div className="relative w-10 h-10 sm:w-12 h-12 md:w-[48px] md:h-[48px] rounded-full flex items-center justify-center hover:scale-110 transition-transform overflow-hidden" style={{
-              minWidth: '40px',
-              minHeight: '40px'
+          <Link href="/" className="flex items-center gap-1.5 sm:gap-3 group hover:opacity-90 transition-opacity flex-shrink-0">
+            <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-[48px] md:h-[48px] rounded-full flex items-center justify-center hover:scale-110 transition-transform overflow-hidden" style={{
+              minWidth: '32px',
+              minHeight: '32px'
             }}>
               {siteLogo ? (
                 <img 
@@ -210,8 +210,8 @@ export default function Navbar() {
               )}
             </div>
             
-            <span className="text-xl sm:text-2xl md:text-3xl font-black inline-block" style={{
-              minWidth: '200px',
+            <span className="text-base sm:text-xl md:text-3xl font-black inline-block" style={{
+              minWidth: 'clamp(90px, 20vw, 200px)',
               color: '#17599F',
               letterSpacing: '0.05em',
               textShadow: '0 0 15px rgba(23, 89, 159, 0.5), 0 0 30px rgba(23, 89, 159, 0.3)',
@@ -305,32 +305,36 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Right section */}
-          <div className="flex items-center gap-2 md:gap-3">
-            {user && isVerified && (
+          {/* Right section - ALWAYS SHOW user, bell, currency on all screens */}
+          <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
+            {/* Currency Switcher - Show on mobile too */}
+            {user && isVerified && isApp2FAVerified && (
               <CurrencySwitcher />
             )}
 
-            {user && isVerified && (
+            {/* Announcement Bell - Show on mobile too */}
+            {user && isVerified && isApp2FAVerified && (
               <AnnouncementBell />
             )}
 
+            {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
               className="p-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
               aria-label="Toggle theme"
               title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
-              {isDark ? <FiSun className="text-lg text-yellow-400" /> : <FiMoon className="text-lg text-blue-500" />}
+              {isDark ? <FiSun className="text-base sm:text-lg text-yellow-400" /> : <FiMoon className="text-base sm:text-lg text-blue-500" />}
             </button>
 
+            {/* User Profile - Show on mobile too */}
             {user ? (
               <div className="relative">
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
                 >
-                  <div className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-primary-500/30">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden ring-2 ring-primary-500/30">
                     {userProfile?.photoURL ? (
                       <img
                         src={userProfile.photoURL}
@@ -348,7 +352,7 @@ export default function Navbar() {
                     )}
                   </div>
                   {isAdmin && (
-                    <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">Admin</span>
+                    <span className="hidden sm:inline-block text-xs font-semibold text-primary-600 dark:text-primary-400">Admin</span>
                   )}
                 </button>
 
@@ -397,22 +401,6 @@ export default function Navbar() {
                       
                       <div className="py-2 px-2 flex-1 overflow-y-auto">
                         <Link
-                          href="/dashboard"
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                          onClick={() => setDropdownOpen(false)}
-                        >
-                          <FiUser className="text-dark-400" />
-                          Dashboard
-                        </Link>
-                        <Link
-                          href="/dashboard/orders"
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                          onClick={() => setDropdownOpen(false)}
-                        >
-                          <FiPackage className="text-dark-400" />
-                          My Orders
-                        </Link>
-                        <Link
                           href="/dashboard/api"
                           className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
                           onClick={() => setDropdownOpen(false)}
@@ -444,7 +432,7 @@ export default function Navbar() {
                 )}
               </div>
             ) : !pathname.startsWith('/admin') ? (
-              <div className="hidden md:flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Link href="/auth/login" className="btn-secondary btn-xs md:btn-sm">
                   Login
                 </Link>
@@ -466,8 +454,18 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {isOpen && (
-        <div className="md:hidden glass border-t border-dark-200/50 dark:border-dark-700/50 animate-slide-down">
+        <div className="md:hidden glass border-t border-dark-200/50 dark:border-dark-700/50 animate-slide-down max-h-[80vh] overflow-y-auto">
           <div className="px-4 py-4 space-y-2">
+            {/* Close button at top */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => setIsOpen(false)}
+                className="p-2 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all"
+                aria-label="Close menu"
+              >
+                <FiX className="text-lg text-dark-600 dark:text-dark-300" />
+              </button>
+            </div>
             <Link
               href="/"
               className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
@@ -537,13 +535,6 @@ export default function Navbar() {
                       <p className="text-xs text-dark-500">{user.email}</p>
                     </div>
                   </div>
-                  <Link
-                    href="/dashboard/settings"
-                    className="block px-4 py-3 rounded-xl font-medium text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Settings
-                  </Link>
                   <button
                     onClick={() => { handleLogout(); setIsOpen(false); }}
                     className="w-full text-left px-4 py-3 rounded-xl font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all"
@@ -552,17 +543,17 @@ export default function Navbar() {
                   </button>
                 </>
               ) : !pathname.startsWith('/admin') ? (
-                <div className="flex gap-3 px-4 py-3">
+                <div className="flex gap-2 sm:gap-3 px-4 py-3">
                   <Link
                     href="/auth/login"
-                    className="flex-1 btn-secondary btn-sm text-center"
+                    className="flex-1 btn-secondary btn-xs sm:btn-sm text-center"
                     onClick={() => setIsOpen(false)}
                   >
                     Login
                   </Link>
                   <Link
                     href="/auth/register"
-                    className="flex-1 btn-primary btn-sm text-center"
+                    className="flex-1 btn-primary btn-xs sm:btn-sm text-center"
                     onClick={() => setIsOpen(false)}
                   >
                     Register

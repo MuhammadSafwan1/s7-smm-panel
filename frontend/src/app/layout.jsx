@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import Navbar from '@/components/common/Navbar';
 import Footer from '@/components/common/Footer';
 import { SeasonalBackground } from '@/components/common/SeasonalBackground';
+import { cachedQuery } from '@/lib/cache';
 import ThemeToaster from '@/components/common/ThemeToaster';
 import SupportButton from '@/components/common/SupportButton';
 import WhatsAppButton from '@/components/common/WhatsAppButton';
@@ -29,8 +30,7 @@ function LayoutContent({ children }) {
   useEffect(() => {
     const fetchSiteLogo = async () => {
       try {
-        const docRef = doc(db, 'siteSettings', 'general');
-        const docSnap = await getDoc(docRef);
+        const docSnap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
         if (docSnap.exists() && docSnap.data().siteLogo) {
           const logoUrl = docSnap.data().siteLogo;
           
@@ -190,6 +190,7 @@ export default function RootLayout({ children }) {
         <meta name="theme-color" content="#1A6BBD" />
         <meta name="msapplication-TileColor" content="#1A6BBD" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         
         {/* Geographic Targeting */}

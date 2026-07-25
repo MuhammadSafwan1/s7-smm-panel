@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { db } from '@/firebase/firestore';
 import { doc, getDoc } from 'firebase/firestore';
 import { usePathname } from 'next/navigation';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 
 export default function DevToolsBlocker() {
   const { user } = useAuth();
@@ -23,7 +24,7 @@ export default function DevToolsBlocker() {
     }
     const check = async () => {
       try {
-        const snap = await getDoc(doc(db, 'siteSettings', 'general'));
+        const snap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
         if (snap.exists()) {
           const emails = snap.data().whitelistedEmails || [];
           const current = (user.email || '').trim().toLowerCase();

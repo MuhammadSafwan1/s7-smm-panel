@@ -28,6 +28,15 @@ export function useAuth() {
         return { success: false, error };
       }
 
+      // 🚀 Send email verification
+      try {
+        await verifyEmail();
+        console.log('✅ Verification email sent to:', email);
+      } catch (emailError) {
+        console.warn('⚠️ Failed to send verification email:', emailError);
+        // Don't fail registration if email sending fails
+      }
+
       const userDocData = {
         uid: newUser.uid,
         email: newUser.email,
@@ -36,13 +45,14 @@ export function useAuth() {
         provider: 'password',
         status: 'active',
         banned: false,
+        emailVerified: false, // Track verification status
         createdAt: new Date(),
         lastActive: new Date(),
       };
 
       await setDoc(doc(db, 'users', newUser.uid), userDocData);
 
-      return { success: true, error: null };
+      return { success: true, error: null, emailSent: true };
     } catch (error) {
       setAuthError(error.message);
       return { success: false, error: error.message };

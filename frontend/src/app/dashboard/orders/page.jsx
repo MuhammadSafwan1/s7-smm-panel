@@ -23,6 +23,7 @@ const STATUS_MAP = {
   'Partial':     'partial',
   'Canceled':    'cancelled',
   'Cancelled':   'cancelled',
+  'Cancel requested': 'cancel_requested',
   'Failed':      'failed',
   'Refunded':    'refunded',
   'Refilling':   'refilling',
@@ -34,6 +35,7 @@ const statusConfig = {
   completed:  { label: 'Completed',  color: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400', icon: FiCheckCircle, spinning: false },
   partial:    { label: 'Partial',    color: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400', icon: FiRefreshCw, spinning: false },
   cancelled:  { label: 'Cancelled',  color: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400', icon: FiXCircle, spinning: false },
+  cancel_requested: { label: 'Cancel Requested', color: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400', icon: FiClock, spinning: true },
   refunded:   { label: 'Refunded',   color: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400', icon: FiCheckCircle, spinning: false },
   failed:     { label: 'Failed',     color: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400', icon: FiXCircle, spinning: false },
   refilling:  { label: 'Refilling',  color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400', icon: FiRefreshCw, spinning: true },
@@ -45,14 +47,20 @@ export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
+  const [displayedOrders, setDisplayedOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const ORDERS_PER_PAGE = 10;
   const syncIntervalRef = useRef(null);
   const providerCacheRef = useRef({});
+  const observerRef = useRef(null);
+  const loadMoreRef = useRef(null);
 
   useEffect(() => {
     if (user) {
@@ -65,6 +73,35 @@ export default function OrdersPage() {
   }, [user]);
 
   useEffect(() => { filterOrders(); }, [searchTerm, statusFilter, orders]);
+
+  // 🚀 Pagination: Load more orders as user scrolls
+  useEffect(() => {
+    const startIndex = 0;
+    const endIndex = page * ORDERS_PER_PAGE;
+    const newDisplayed = filteredOrders.slice(startIndex, endIndex);
+    setDisplayedOrders(newDisplayed);
+    setHasMore(endIndex < filteredOrders.length);
+  }, [filteredOrders, page]);
+
+  // 🚀 Infinite scroll observer
+  useEffect(() => {
+    if (!loadMoreRef.current) return;
+    
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !ordersLoading) {
+          setPage(prev => prev + 1);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    
+    observerRef.current.observe(loadMoreRef.current);
+    
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, [hasMore, ordersLoading]);
 
   const getProvider = async (providerId) => {
     if (!providerId) return null;
@@ -134,7 +171,7 @@ export default function OrdersPage() {
     const active = ordersList.filter(o => o.providerOrderId && o.providerId && ['pending', 'processing', 'refilling'].includes(o.status));
     if (active.length === 0) return ordersList;
     const updated = await Promise.all(ordersList.map(async (order) => {
-      if (order.providerOrderId && order.providerId && ['pending', 'processing', 'refilling'].includes(order.status)) {
+      if (order.providerOrderId && order.providerId && ['pending', 'processing', 'refilling', 'cancel_requested'].includes(order.status)) {
         return syncSingleOrder(order);
       }
       return order;
@@ -178,8 +215,8 @@ export default function OrdersPage() {
           if (refundAmount > 0) {
             const userSnap = await getDoc(doc(db, 'users', order.userId));
             if (userSnap.exists()) {
-              const newBal = parseFloat(((userSnap.data().balance || 0) + refundAmount).toFixed(4));
-              await updateDoc(doc(db, 'users', order.userId), { balance: newBal });
+              const newBal = parseFloat(((userSnap.data().walletBalance || 0) + refundAmount).toFixed(4));
+              await updateDoc(doc(db, 'users', order.userId), { walletBalance: newBal });
               await addDoc(collection(db, 'transactions'), {
                 userId: order.userId, orderId: order.id, type: 'refund',
                 amount: refundAmount, description: `Partial refund (2% fee) for order #${order.id.substring(0, 8)}`,
@@ -196,8 +233,8 @@ export default function OrdersPage() {
           if (refundAmount > 0) {
             const userSnap = await getDoc(doc(db, 'users', order.userId));
             if (userSnap.exists()) {
-              const newBal = parseFloat(((userSnap.data().balance || 0) + refundAmount).toFixed(4));
-              await updateDoc(doc(db, 'users', order.userId), { balance: newBal });
+              const newBal = parseFloat(((userSnap.data().walletBalance || 0) + refundAmount).toFixed(4));
+              await updateDoc(doc(db, 'users', order.userId), { walletBalance: newBal });
               await addDoc(collection(db, 'transactions'), {
                 userId: order.userId, orderId: order.id, type: 'refund',
                 amount: refundAmount, description: `Cancelled refund (2% fee deducted) for order #${order.id.substring(0, 8)}`,
@@ -260,11 +297,12 @@ export default function OrdersPage() {
 
       if (cancelled) {
         await updateDoc(doc(db, 'orders', order.id), {
-          status: 'cancelled',
+          status: 'cancel_requested',
+          cancelRequested: true,
           updatedAt: new Date(),
         });
         
-        toast.success('Order Cancelled Successfully!');
+        toast.success('Cancel request sent! Waiting for provider confirmation.');
         
         await fetchOrders();
         setSelectedOrder(null);
@@ -408,6 +446,7 @@ export default function OrdersPage() {
                 <option value="processing">Processing</option>
                 <option value="completed">Completed</option>
                 <option value="partial">Partial</option>
+                <option value="cancel_requested">Cancel Requested</option>
                 <option value="cancelled">Cancelled</option>
                 <option value="refunded">Refunded</option>
                 <option value="failed">Failed</option>
@@ -450,10 +489,10 @@ export default function OrdersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-[#253a5e]/50">
-                    {filteredOrders.map(order => {
+                    {displayedOrders.map(order => {
                       const status = getStatus(order.status);
                       const StatusIcon = status.icon;
-                      const canCancel = order.cancelSupported && order.providerOrderId && order.providerId && ['pending', 'processing'].includes(order.status);
+                      const canCancel = order.cancelSupported && order.providerOrderId && order.providerId && !order.cancelRequested && ['pending', 'processing'].includes(order.status);
                       const canRefill = (() => {
                         if (!order.refillSupported || !order.providerOrderId || !order.providerId) return false;
                         if (order.status !== 'completed') return false;
@@ -516,10 +555,10 @@ export default function OrdersPage() {
 
             {/* Mobile Card View */}
             <div className="md:hidden space-y-2 sm:space-y-3">
-              {filteredOrders.map(order => {
+              {displayedOrders.map(order => {
                 const status = getStatus(order.status);
                 const StatusIcon = status.icon;
-                const canCancel = order.cancelSupported && order.providerOrderId && order.providerId && ['pending', 'processing'].includes(order.status);
+                const canCancel = order.cancelSupported && order.providerOrderId && order.providerId && !order.cancelRequested && ['pending', 'processing'].includes(order.status);
                 const canRefill = (() => {
                   if (!order.refillSupported || !order.providerOrderId || !order.providerId) return false;
                   if (order.status !== 'completed') return false;
@@ -544,7 +583,7 @@ export default function OrdersPage() {
                             {status.label}
                           </span>
                         </div>
-                        <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white truncate">{order.serviceName || 'N/A'}</p>
+                        <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white sm:truncate">{order.serviceName || 'N/A'}</p>
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="text-sm sm:text-base font-bold text-blue-600 dark:text-blue-400">{format(order.charge || 0)}</p>
@@ -553,7 +592,7 @@ export default function OrdersPage() {
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-2 sm:mb-3">
                       <span>ID: <span className="font-mono text-blue-600 dark:text-blue-400">{order.serviceId || 'N/A'}</span></span>
-                      <span className="truncate">Platform: {order.platformName || 'N/A'}</span>
+                      <span className="sm:truncate">Platform: {order.platformName || 'N/A'}</span>
                       <span className="whitespace-nowrap">Date: {formatDate(order.createdAt)}</span>
                     </div>
                     <div className="flex items-center gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-gray-100 dark:border-[#253a5e]">
@@ -646,6 +685,20 @@ export default function OrdersPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+        
+        {/* 🚀 Infinite Scroll Trigger */}
+        {hasMore && !ordersLoading && displayedOrders.length > 0 && (
+          <div ref={loadMoreRef} className="py-8 text-center">
+            <Spinner size="md" />
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Loading more orders...</p>
+          </div>
+        )}
+        
+        {!hasMore && displayedOrders.length > 0 && (
+          <div className="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+            All orders loaded ({displayedOrders.length} total)
           </div>
         )}
       </div>

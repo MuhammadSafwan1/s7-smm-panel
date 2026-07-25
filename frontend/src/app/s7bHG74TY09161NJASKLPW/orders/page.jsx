@@ -39,6 +39,7 @@ export default function OrdersManagement() {
     'Partial':     'partial',
     'Canceled':    'cancelled',
     'Cancelled':   'cancelled',
+    'Cancel requested': 'cancel_requested',
     'Failed':      'failed',
     'Refunded':    'refunded',
     'Refilling':   'refilling',
@@ -50,6 +51,7 @@ export default function OrdersManagement() {
     { value: 'processing', label: 'Processing'  },
     { value: 'completed',  label: 'Completed'   },
     { value: 'partial',    label: 'Partial'     },
+    { value: 'cancel_requested', label: 'Cancel Requested' },
     { value: 'cancelled',  label: 'Cancelled'   },
     { value: 'refunded',   label: 'Refunded'    },
     { value: 'failed',     label: 'Failed'      },
@@ -135,7 +137,7 @@ export default function OrdersManagement() {
     console.log(`🔄 Syncing ${active.length} active orders...`);
     
     const updated = await Promise.all(ordersList.map(async (order) => {
-      if (order.providerOrderId && order.providerId && ['pending', 'processing', 'refilling'].includes(order.status)) {
+      if (order.providerOrderId && order.providerId && ['pending', 'processing', 'refilling', 'cancel_requested'].includes(order.status)) {
         return await syncSingleOrder(order);
       }
       return order;
@@ -200,8 +202,8 @@ export default function OrdersManagement() {
             const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
             if (!userSnap.empty) {
               const userDoc = userSnap.docs[0];
-              const newBal = parseFloat(((userDoc.data().balance || 0) + refundAmount).toFixed(4));
-              await updateDoc(doc(db, 'users', userDoc.id), { balance: newBal });
+              const newBal = parseFloat(((userDoc.data().walletBalance || 0) + refundAmount).toFixed(4));
+              await updateDoc(doc(db, 'users', userDoc.id), { walletBalance: newBal });
               await addDoc(collection(db, 'transactions'), {
                 userId: order.userId,
                 orderId: order.id,
@@ -223,8 +225,8 @@ export default function OrdersManagement() {
             const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
             if (!userSnap.empty) {
               const userDoc = userSnap.docs[0];
-              const newBal = parseFloat(((userDoc.data().balance || 0) + refundAmount).toFixed(4));
-              await updateDoc(doc(db, 'users', userDoc.id), { balance: newBal });
+              const newBal = parseFloat(((userDoc.data().walletBalance || 0) + refundAmount).toFixed(4));
+              await updateDoc(doc(db, 'users', userDoc.id), { walletBalance: newBal });
               await addDoc(collection(db, 'transactions'), {
                 userId: order.userId,
                 orderId: order.id,
@@ -313,8 +315,8 @@ export default function OrdersManagement() {
           
           if (!usersSnap.empty) {
             const userDoc = usersSnap.docs[0];
-            const newBalance = parseFloat(((userDoc.data().balance || 0) + refundAmount).toFixed(4));
-            await updateDoc(doc(db, 'users', userDoc.id), { balance: newBalance });
+            const newBalance = parseFloat(((userDoc.data().walletBalance || 0) + refundAmount).toFixed(4));
+            await updateDoc(doc(db, 'users', userDoc.id), { walletBalance: newBalance });
             
             // Create transaction record
             await addDoc(collection(db, 'transactions'), {
@@ -374,12 +376,11 @@ export default function OrdersManagement() {
       }
       
       const userDoc = usersSnap.docs[0];
-      const currentBalance = userDoc.data().balance || 0;
+      const currentBalance = userDoc.data().walletBalance || 0;
       const newBalance = parseFloat((currentBalance + amount).toFixed(4));
       
-      // Update user balance
       await updateDoc(doc(db, 'users', userDoc.id), { 
-        balance: newBalance,
+        walletBalance: newBalance,
         updatedAt: new Date()
       });
       
@@ -419,6 +420,7 @@ export default function OrdersManagement() {
       case 'completed':  return <FiCheckCircle className="text-green-500 animate-pulse" />;
       case 'pending':    return <FiClock className="text-yellow-500 animate-spin" />;
       case 'processing': return <FiRefreshCw className="text-blue-500 animate-spin" />;
+      case 'cancel_requested': return <FiClock className="text-orange-500 animate-spin" />;
       case 'cancelled':
       case 'failed':     return <FiXCircle className="text-red-500" />;
       default:           return <FiClock className="text-gray-500" />;
@@ -431,11 +433,24 @@ export default function OrdersManagement() {
       case 'pending':    return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400';
       case 'processing': return 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400';
       case 'partial':    return 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400';
+      case 'cancel_requested': return 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400';
       case 'cancelled':
       case 'failed':     return 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400';
       case 'refunded':   return 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400';
       default:           return 'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-400';
     }
+  };
+
+  const statusLabel = {
+    pending: 'Pending',
+    processing: 'Processing',
+    completed: 'Completed',
+    partial: 'Partial',
+    cancelled: 'Cancelled',
+    cancel_requested: 'Cancel Requested',
+    refunded: 'Refunded',
+    failed: 'Failed',
+    refilling: 'Refilling',
   };
 
   return (
@@ -503,7 +518,7 @@ export default function OrdersManagement() {
             <table className="w-full">
               <thead className="bg-dark-100 dark:bg-dark-800 border-b border-dark-200 dark:border-dark-700">
                 <tr>
-                  {['Order ID','User','Service','Service ID','Platform','Quantity','Charge','Status','Date','Actions'].map(h => (
+                  {['Order ID','User','Service','Service ID','Provider Order ID','Platform','Quantity','Charge','Status','Date','Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-dark-600 dark:text-dark-300 uppercase">{h}</th>
                   ))}
                 </tr>
@@ -530,15 +545,25 @@ export default function OrdersManagement() {
                         )}
                       </div>
                     </td>
+                    {/* NEW: Provider Order ID Column */}
+                    <td className="px-4 py-3">
+                      {order.providerOrderId ? (
+                        <span className="font-mono text-xs bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded text-emerald-700 dark:text-emerald-400 inline-block">
+                          {order.providerOrderId}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-dark-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3"><span className="text-sm text-dark-700 dark:text-dark-300">{order.platformName || 'N/A'}</span></td>
                     <td className="px-4 py-3"><span className="text-sm font-semibold">{order.quantity?.toLocaleString()}</span></td>
                     <td className="px-4 py-3"><span className="text-sm font-bold text-primary-600 dark:text-primary-400">{format(order.charge || 0)}</span></td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                        {getStatusIcon(order.status)}{order.status}
+                        {getStatusIcon(order.status)}{statusLabel[order.status] || order.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3"><span className="text-sm text-dark-600 dark:text-dark-400">{order.createdAt?.toDate().toLocaleDateString()}</span></td>
+                    <td className="px-4 py-3"><span className="text-sm text-dark-600 dark:text-dark-400">{order.createdAt?.toDate?.()?.toLocaleDateString()}</span></td>
                     <td className="px-4 py-3">
                       <button onClick={() => { setSelectedOrder(order); setShowDetailsModal(true); }}
                         className="text-primary-600 hover:text-primary-700 dark:text-primary-400 text-sm font-medium">
@@ -618,13 +643,13 @@ export default function OrdersManagement() {
                 <div>
                   <p className="text-xs text-dark-500 mb-2">Current Status</p>
                   <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium ${getStatusColor(selectedOrder.status)}`}>
-                    {getStatusIcon(selectedOrder.status)}{selectedOrder.status}
+                    {getStatusIcon(selectedOrder.status)}{statusLabel[selectedOrder.status] || selectedOrder.status}
                   </span>
                 </div>
                 <div>
                   <p className="text-xs text-dark-500 mb-2">Update Status</p>
                   <div className="flex flex-wrap gap-2">
-                    {['pending','processing','completed','partial','cancelled','failed'].map(status => (
+                    {['pending','processing','completed','partial','cancel_requested','cancelled','failed'].map(status => (
                       <button key={status}
                         onClick={() => updateOrderStatus(selectedOrder.id, status)}
                         disabled={updating || selectedOrder.status === status}
@@ -653,8 +678,8 @@ export default function OrdersManagement() {
                   </div>
                 )}
                 <div className="pt-4 border-t border-dark-200 dark:border-dark-700 text-xs text-dark-500 space-y-1">
-                  <p>Created: {selectedOrder.createdAt?.toDate().toLocaleString()}</p>
-                  <p>Updated: {selectedOrder.updatedAt?.toDate().toLocaleString()}</p>
+                  <p>Created: {selectedOrder.createdAt?.toDate?.()?.toLocaleString()}</p>
+                  <p>Updated: {selectedOrder.updatedAt?.toDate?.()?.toLocaleString()}</p>
                 </div>
               </div>
             </div>

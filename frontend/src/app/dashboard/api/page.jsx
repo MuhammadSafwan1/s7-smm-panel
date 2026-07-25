@@ -24,54 +24,54 @@ export default function ApiPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 px-3 sm:px-0">
       {/* Header */}
       <div>
-        <h2 className="text-3xl font-bold text-dark-900 dark:text-white mb-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-dark-900 dark:text-white mb-1 sm:mb-2">
           API Integration
         </h2>
-        <p className="text-dark-500 dark:text-dark-400">
+        <p className="text-xs sm:text-sm text-dark-500 dark:text-dark-400">
           Integrate our services into your application
         </p>
       </div>
 
       {/* Coming Soon Card */}
-      <div className="glass-card p-12">
-        <div className="max-w-2xl mx-auto text-center space-y-6">
+      <div className="glass-card p-6 sm:p-12">
+        <div className="max-w-2xl mx-auto text-center space-y-4 sm:space-y-6">
           {/* Icon */}
-          <div className="flex justify-center mb-6">
+          <div className="flex justify-center mb-4 sm:mb-6">
             <div className="relative">
-              <div className="w-32 h-32 rounded-3xl gradient-bg flex items-center justify-center">
-                <FiCode className="text-6xl text-white" />
+              <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl gradient-bg flex items-center justify-center">
+                <FiCode className="text-4xl sm:text-6xl text-white" />
               </div>
-              <div className="absolute -top-2 -right-2 w-16 h-16 rounded-2xl bg-yellow-500 flex items-center justify-center animate-pulse">
-                <FiClock className="text-3xl text-white" />
+              <div className="absolute -top-2 -right-2 w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-yellow-500 flex items-center justify-center animate-pulse">
+                <FiClock className="text-2xl sm:text-3xl text-white" />
               </div>
             </div>
           </div>
 
           {/* Title */}
-          <div className="space-y-3">
-            <h3 className="text-4xl font-bold text-dark-900 dark:text-white">
+          <div className="space-y-2 sm:space-y-3">
+            <h3 className="text-2xl sm:text-4xl font-bold text-dark-900 dark:text-white">
               Coming Soon
             </h3>
-            <p className="text-xl text-dark-600 dark:text-dark-300">
+            <p className="text-base sm:text-xl text-dark-600 dark:text-dark-300">
               API Integration System
             </p>
           </div>
 
           {/* Description */}
-          <div className="space-y-4 max-w-xl mx-auto">
-            <p className="text-dark-600 dark:text-dark-400 leading-relaxed">
+          <div className="space-y-3 sm:space-y-4 max-w-xl mx-auto">
+            <p className="text-xs sm:text-sm text-dark-600 dark:text-dark-400 leading-relaxed">
               We're building a powerful API system that will allow you to integrate our SMM services directly into your application or website.
             </p>
             
             {/* Features List */}
-            <div className="mt-8 p-6 rounded-2xl bg-gradient-to-br from-primary-50 to-secondary-50 dark:from-primary-500/10 dark:to-secondary-500/10 border border-primary-200 dark:border-primary-500/20">
-              <p className="text-sm font-semibold text-primary-700 dark:text-primary-300 mb-4">
+            <div className="mt-6 sm:mt-8 p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-primary-50 to-secondary-50 dark:from-primary-500/10 dark:to-secondary-500/10 border border-primary-200 dark:border-primary-500/20">
+              <p className="text-xs sm:text-sm font-semibold text-primary-700 dark:text-primary-300 mb-3 sm:mb-4">
                 🚀 What's Coming:
               </p>
-              <ul className="space-y-2 text-left text-sm text-dark-700 dark:text-dark-300">
+              <ul className="space-y-1.5 sm:space-y-2 text-left text-xs sm:text-sm text-dark-700 dark:text-dark-300">
                 <li className="flex items-start gap-2">
                   <span className="text-primary-600 dark:text-primary-400 mt-0.5">✓</span>
                   <span>Generate and manage secure API keys</span>
@@ -97,31 +97,31 @@ export default function ApiPage() {
           </div>
 
           {/* Status Badge */}
-          <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-yellow-100 dark:bg-yellow-500/20 border border-yellow-300 dark:border-yellow-500/30">
+          <div className="inline-flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-3 rounded-full bg-yellow-100 dark:bg-yellow-500/20 border border-yellow-300 dark:border-yellow-500/30">
             <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
-            <span className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+            <span className="text-xs sm:text-sm font-medium text-yellow-800 dark:text-yellow-300">
               Under Development
             </span>
           </div>
 
           {/* Contact Info */}
-          <p className="text-sm text-dark-500 dark:text-dark-400 pt-4">
+          <p className="text-xs sm:text-sm text-dark-500 dark:text-dark-400 pt-3 sm:pt-4">
             Have questions? Contact us through the support ticket system.
           </p>
         </div>
       </div>
 
       {/* Info Card */}
-      <div className="glass-card p-6">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-            <FiKey className="text-2xl text-blue-600 dark:text-blue-400" />
+      <div className="glass-card p-4 sm:p-6">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+            <FiKey className="text-xl sm:text-2xl text-blue-600 dark:text-blue-400" />
           </div>
           <div className="flex-1">
-            <h4 className="text-lg font-bold text-dark-900 dark:text-white mb-2">
+            <h4 className="text-base sm:text-lg font-bold text-dark-900 dark:text-white mb-1 sm:mb-2">
               Stay Tuned!
             </h4>
-            <p className="text-sm text-dark-600 dark:text-dark-400 leading-relaxed">
+            <p className="text-xs sm:text-sm text-dark-600 dark:text-dark-400 leading-relaxed">
               We're working hard to bring you a seamless API integration experience. The system will be available soon with full documentation and support for standard SMM panel API format.
             </p>
           </div>

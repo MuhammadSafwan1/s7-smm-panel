@@ -222,8 +222,7 @@ export default function PaymentVerificationPage() {
 
         // Commission logic: credit referrer if user was referred by someone
         try {
-          const userDoc = await getDoc(doc(db, 'users', tx.userId));
-          const userData = userDoc.data();
+          const userData = userSnap.data();
           if (userData?.referredBy) {
             const settingsSnap = await getDoc(doc(db, 'siteSettings', 'referral'));
             const commissionRate = settingsSnap.exists() ? (settingsSnap.data().commissionRate || 5) : 5;

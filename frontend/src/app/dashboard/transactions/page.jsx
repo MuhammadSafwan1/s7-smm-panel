@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, query, where } from 'firebase/firestore';
@@ -14,10 +14,17 @@ export default function TransactionsPage() {
   const { format } = useCurrency();
   const [transactions, setTransactions] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
+  const [displayedTransactions, setDisplayedTransactions] = useState([]);
+  const [displayedWithdrawals, setDisplayedWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [tab, setTab] = useState('payments');
   const [selectedTx, setSelectedTx] = useState(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const ITEMS_PER_PAGE = 10;
+  const loadMoreRef = useRef(null);
+  const observerRef = useRef(null);
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -53,6 +60,46 @@ export default function TransactionsPage() {
   const filtered = filter === 'all' 
     ? transactions 
     : transactions.filter(tx => tx.status === filter);
+
+  // 🚀 Pagination for transactions
+  useEffect(() => {
+    const endIndex = page * ITEMS_PER_PAGE;
+    const dataToDisplay = tab === 'payments' ? filtered : withdrawals;
+    const newDisplayed = dataToDisplay.slice(0, endIndex);
+    
+    if (tab === 'payments') {
+      setDisplayedTransactions(newDisplayed);
+      setHasMore(endIndex < filtered.length);
+    } else {
+      setDisplayedWithdrawals(newDisplayed);
+      setHasMore(endIndex < withdrawals.length);
+    }
+  }, [filtered, withdrawals, page, tab, filter]);
+
+  // 🚀 Infinite scroll
+  useEffect(() => {
+    if (!loadMoreRef.current) return;
+    
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          setPage(prev => prev + 1);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    
+    observerRef.current.observe(loadMoreRef.current);
+    
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, [hasMore, loading]);
+  
+  // Reset page when tab/filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [tab, filter]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -178,7 +225,7 @@ export default function TransactionsPage() {
         {/* Deposits Tab */}
         {tab === 'payments' && (
           <>
-            {filtered.length === 0 ? (
+            {displayedTransactions.length === 0 ? (
               <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-12 text-center border border-gray-100 dark:border-[#253a5e]">
                 <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center mx-auto mb-4">
                   <FiCreditCard className="text-gray-400 dark:text-gray-500" size={28} />
@@ -188,7 +235,7 @@ export default function TransactionsPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {filtered.map(tx => (
+                {displayedTransactions.map(tx => (
                   <div
                     key={tx.id}
                     onClick={() => setSelectedTx(tx)}
@@ -237,7 +284,7 @@ export default function TransactionsPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {withdrawals.map(w => (
+                {displayedWithdrawals.map(w => (
                   <div key={w.id} className="bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -268,6 +315,20 @@ export default function TransactionsPage() {
               </div>
             )}
           </>
+        )}
+        
+        {/* 🚀 Infinite Scroll Trigger */}
+        {hasMore && !loading && (tab === 'payments' ? displayedTransactions.length > 0 : displayedWithdrawals.length > 0) && (
+          <div ref={loadMoreRef} className="py-6 text-center">
+            <div className="inline-block w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Loading more...</p>
+          </div>
+        )}
+        
+        {!hasMore && (tab === 'payments' ? displayedTransactions.length > 0 : displayedWithdrawals.length > 0) && (
+          <div className="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+            All {tab === 'payments' ? 'transactions' : 'withdrawals'} loaded
+          </div>
         )}
       </div>
 

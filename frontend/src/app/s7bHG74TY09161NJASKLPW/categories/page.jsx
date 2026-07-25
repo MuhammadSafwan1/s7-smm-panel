@@ -5,6 +5,7 @@ import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { FiPlus, FiEdit2, FiTrash2, FiLayers, FiUpload, FiX, FiLink, FiTool } from 'react-icons/fi';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 
 // Same icon upload component as platforms
 function IconUpload({ value, onChange }) {
@@ -147,8 +148,8 @@ export default function CategoriesPage() {
   const fetchData = async () => {
     try {
       const [catSnap, platSnap] = await Promise.all([
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'platforms')),
+        cachedQuery('collection:categories', () => getDocs(collection(db, 'categories')), 30000),
+        cachedQuery('collection:platforms', () => getDocs(collection(db, 'platforms')), 30000),
       ]);
       setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       const platformsList = platSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -170,7 +171,7 @@ export default function CategoriesPage() {
 
   const openEdit = (cat) => {
     setEditingCategory(cat);
-    setForm({ name: cat.name, platformId: cat.platformId, icon: cat.icon || '', description: cat.description || '', sortOrder: cat.sortOrder || '', isActive: cat.isActive, maintenance: !!cat.maintenance });
+    setForm({ name: cat.name, platformId: cat.platformId, icon: cat.icon || '', description: cat.description || '', sortOrder: String(cat.sortOrder ?? ''), isActive: cat.isActive, maintenance: !!cat.maintenance });
     setShowModal(true);
   };
 
@@ -180,15 +181,16 @@ export default function CategoriesPage() {
     if (!form.platformId) { toast.error('Please select a platform'); return; }
     
     // Check if sortOrder is already used in the same platform
-    if (form.sortOrder && form.sortOrder.trim() !== '') {
+    const sortStr = String(form.sortOrder || '').trim();
+    if (sortStr !== '') {
       const duplicateOrder = categories.find(
         cat => cat.platformId === form.platformId && 
-               cat.sortOrder === parseInt(form.sortOrder) &&
+               cat.sortOrder === parseInt(sortStr) &&
                (!editingCategory || cat.id !== editingCategory.id)
       );
       if (duplicateOrder) {
         const platformName = platforms.find(p => p.id === form.platformId)?.name || 'this platform';
-        toast.error(`Display Order ${form.sortOrder} is already used by "${duplicateOrder.name}" in ${platformName}`);
+        toast.error(`Display Order ${sortStr} is already used by "${duplicateOrder.name}" in ${platformName}`);
         return;
       }
     }
@@ -198,7 +200,7 @@ export default function CategoriesPage() {
       const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
       if (!editingCategory && form.maintenance === undefined) form.maintenance = false;
       // Convert sortOrder to number, default to 999 if not provided
-      const sortOrderValue = form.sortOrder && form.sortOrder.trim() !== '' ? parseInt(form.sortOrder) : 999;
+      const sortOrderValue = sortStr ? parseInt(sortStr) : 999;
       const data = { ...form, slug, sortOrder: sortOrderValue, updatedAt: Timestamp.now() };
       if (editingCategory) {
         await updateDoc(doc(db, 'categories', editingCategory.id), data);
@@ -214,10 +216,11 @@ export default function CategoriesPage() {
   };
 
   const handleDelete = async (id, name) => {
-    const snap = await getDocs(collection(db, 'services'));
+    const snap = await cachedQuery('collection:services', () => getDocs(collection(db, 'services')), 30000);
     if (snap.docs.some(d => d.data().categoryId === id)) { toast.error('Delete services in this category first'); return; }
     if (!confirm(`Delete "${name}"?`)) return;
     await deleteDoc(doc(db, 'categories', id));
+    invalidateCache('collection:categories');
     toast.success('Category deleted');
     fetchData();
   };
@@ -229,7 +232,9 @@ export default function CategoriesPage() {
 
   const getPlatform = (id) => platforms.find(p => p.id === id);
 
-  const filtered = selectedPlatform ? categories.filter(c => c.platformId === selectedPlatform) : [];
+  const filtered = selectedPlatform
+    ? categories.filter(c => c.platformId === selectedPlatform).sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))
+    : [];
 
   return (
     <div>
@@ -342,88 +347,90 @@ export default function CategoriesPage() {
                 className="w-8 h-8 rounded-lg hover:bg-dark-100 dark:hover:bg-dark-800 flex items-center justify-center text-dark-500 text-xl">×</button>
             </div>
 
-            <form onSubmit={handleSave} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
-              {/* Platform */}
-              <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Platform *</label>
-                <select required value={form.platformId} onChange={(e) => setForm({ ...form, platformId: e.target.value })}
-                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white">
-                  <option value="">Select Platform</option>
-                  {platforms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-
-              {/* Category Name */}
-              <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Category Name *</label>
-                <input type="text" required placeholder="e.g., Followers, Likes, Views"
-                  value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
-              </div>
-
-              {/* Display Order */}
-              <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Display Order</label>
-                <input type="number" min="1" placeholder="e.g., 1, 2, 3"
-                  value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
-                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
-                <p className="text-xs text-dark-400 mt-1">Lower numbers appear first on user dashboard (e.g., 1 = first position, 2 = second position)</p>
-              </div>
-
-              {/* Icon Upload */}
-              <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Icon / GIF</label>
-                <IconUpload value={form.icon} onChange={(url) => setForm({ ...form, icon: url })} />
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Status</label>
-                <div className="flex gap-3">
-                  <button type="button" onClick={() => setForm({ ...form, isActive: true })}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${form.isActive ? 'border-green-500 bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-green-400'}`}>
-                    ● Active
-                  </button>
-                  <button type="button" onClick={() => setForm({ ...form, isActive: false })}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${!form.isActive ? 'border-red-500 bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-red-400'}`}>
-                    ○ Inactive
-                  </button>
+            <form onSubmit={handleSave} className="px-6 py-5">
+              <div className="space-y-5 max-h-[65vh] overflow-y-auto pr-1">
+                {/* Platform */}
+                <div>
+                  <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Platform *</label>
+                  <select value={form.platformId} onChange={(e) => setForm({ ...form, platformId: e.target.value })}
+                    className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white">
+                    <option value="">Select Platform</option>
+                    {platforms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                 </div>
-              </div>
 
-              {/* Description */}
-              <div>
-                <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Description</label>
-                <textarea rows="2" placeholder="e.g., Get real Instagram followers fast"
-                  value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white resize-none" />
-              </div>
+                {/* Category Name */}
+                <div>
+                  <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Category Name *</label>
+                  <input type="text" placeholder="e.g., Followers, Likes, Views"
+                    value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
+                </div>
 
-              {/* Maintenance Mode Toggle */}
-                <div className="flex items-center justify-between p-4 rounded-xl bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
-                  <div className="flex items-center gap-3">
-                    <span className="text-orange-500 text-xl">🔧</span>
-                    <div>
-                      <p className="font-semibold text-dark-900 dark:text-white text-sm">Maintenance Mode</p>
-                      <p className="text-xs text-dark-500">Non-whitelisted users will see "Under Maintenance" for this category</p>
-                    </div>
+                {/* Display Order */}
+                <div>
+                  <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Display Order</label>
+                  <input type="number" min="1" placeholder="e.g., 1, 2, 3"
+                    value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+                    className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white" />
+                  <p className="text-xs text-dark-400 mt-1">Lower numbers appear first on user dashboard (e.g., 1 = first position, 2 = second position)</p>
+                </div>
+
+                {/* Icon Upload */}
+                <div>
+                  <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Icon / GIF</label>
+                  <IconUpload value={form.icon} onChange={(url) => setForm({ ...form, icon: url })} />
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Status</label>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => setForm({ ...form, isActive: true })}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${form.isActive ? 'border-green-500 bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-green-400'}`}>
+                      ● Active
+                    </button>
+                    <button type="button" onClick={() => setForm({ ...form, isActive: false })}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${!form.isActive ? 'border-red-500 bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-red-400'}`}>
+                      ○ Inactive
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, maintenance: !form.maintenance })}
-                    className={`relative inline-flex items-center h-8 w-14 rounded-full transition-colors ${form.maintenance ? 'bg-orange-500' : 'bg-gray-400'}`}
-                  >
-                    <span className={`inline-block w-6 h-6 transform bg-white rounded-full transition-transform ${form.maintenance ? 'translate-x-7' : 'translate-x-1'}`} />
-                  </button>
                 </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-semibold text-dark-700 dark:text-dark-300 mb-2">Description</label>
+                  <textarea rows="2" placeholder="e.g., Get real Instagram followers fast"
+                    value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    className="w-full px-4 py-3 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-dark-900 dark:text-white resize-none" />
+                </div>
+
+                {/* Maintenance Mode Toggle */}
+                  <div className="flex items-center justify-between p-4 rounded-xl bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700">
+                    <div className="flex items-center gap-3">
+                      <span className="text-orange-500 text-xl">🔧</span>
+                      <div>
+                        <p className="font-semibold text-dark-900 dark:text-white text-sm">Maintenance Mode</p>
+                        <p className="text-xs text-dark-500">Non-whitelisted users will see "Under Maintenance" for this category</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, maintenance: !form.maintenance })}
+                      className={`relative inline-flex items-center h-8 w-14 rounded-full transition-colors ${form.maintenance ? 'bg-orange-500' : 'bg-gray-400'}`}
+                    >
+                      <span className={`inline-block w-6 h-6 transform bg-white rounded-full transition-transform ${form.maintenance ? 'translate-x-7' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+              </div>
 
               {/* Actions */}
-                <div className="flex gap-3 pt-2">
+                <div className="flex gap-3 pt-2 mt-5">
                   <button type="button" onClick={() => setShowModal(false)} disabled={saving}
                     className="flex-1 py-3 rounded-xl border-2 border-dark-200 dark:border-dark-700 text-dark-700 dark:text-dark-300 font-semibold hover:bg-dark-50 dark:hover:bg-dark-800 transition-all">
                     Cancel
                   </button>
-                  <button type="submit" disabled={saving}
+                  <button type="button" onClick={handleSave} disabled={saving}
                     className="flex-1 py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-semibold transition-all disabled:opacity-60">
                     {saving ? 'Saving...' : editingCategory ? 'Update' : 'Add Category'}
                   </button>

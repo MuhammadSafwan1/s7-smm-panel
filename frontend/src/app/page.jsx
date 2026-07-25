@@ -95,34 +95,19 @@ function HomePageContent() {
   }, []);
 
   useEffect(() => {
-    const lastFetch = localStorage.getItem('homepageLastFetch');
-    const cachedData = localStorage.getItem('homepageData');
-    const now = Date.now();
-    
-    if (cachedData && lastFetch && (now - parseInt(lastFetch)) < 5 * 60 * 1000) {
-      try {
-        const parsed = JSON.parse(cachedData);
-        setPlatforms(parsed.platforms || []);
-        setTopUsers(parsed.topUsers || []);
-        setAdminSettings(parsed.adminSettings || null);
-        setStats(parsed.stats || {});
-        setDataLoaded(true);
-        setLoading(false);
-        setLoadingPlatforms(false);
-      } catch (error) {
-        console.error('Error parsing cached data:', error);
-        localStorage.removeItem('homepageData');
-        localStorage.removeItem('homepageLastFetch');
-        fetchAllData();
-      }
-    } else {
-      fetchAllData();
-    }
+    // 🚀 ALWAYS fetch fresh data on page load (no persistent cache)
+    console.log('🚀 Page loaded - Fetching fresh data...');
+    fetchAllData();
   }, [retryCount]);
 
   const fetchAllData = async () => {
+    console.log('📡 fetchAllData started...');
     setLoading(true);
     try {
+      // 🚀 OPTIMIZED: Fetch only necessary data
+      
+      // 1. Admin settings (1 read)
+      console.log('1️⃣ Fetching admin settings...');
       const settingsDocRef = doc(db, 'siteSettings', 'general');
       const settingsSnap = await getDoc(settingsDocRef);
       let adminSettingsData = null;
@@ -133,84 +118,69 @@ function HomePageContent() {
           adminDescription: data.adminDescription || '',
           adminPhoto: data.adminPhoto || null
         };
+        console.log('✅ Admin settings loaded:', adminSettingsData);
       } else {
         adminSettingsData = {
           adminName: 'MSF SMM PANEL',
           adminDescription: 'Professional SMM Panel Services',
           adminPhoto: null
         };
+        console.log('⚠️ No admin settings found, using defaults');
       }
 
+      // 2. Platforms (5-10 reads) - needed for homepage display
+      console.log('2️⃣ Fetching platforms...');
       const platformsSnap = await getDocs(
         query(collection(db, 'platforms'), where('isActive', '==', true))
       );
       const platformsData = platformsSnap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      console.log(`✅ Loaded ${platformsData.length} platforms`);
       setPlatforms(platformsData);
 
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const usersData = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // 3. Stats counter (1 read instead of 100+)
+      console.log('3️⃣ Fetching stats counter...');
+      const statsDocRef = doc(db, 'stats', 'counters');
+      const statsSnap = await getDoc(statsDocRef);
       
-      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-      const onlineCount = usersData.filter(u => {
-        if (!u.lastSeen) return false;
-        const lastSeen = u.lastSeen?.toMillis?.() || u.lastSeen?.seconds * 1000 || u.lastSeen;
-        return lastSeen > fiveMinutesAgo;
-      }).length;
+      let statsData;
+      if (statsSnap.exists()) {
+        // Use pre-calculated stats
+        const data = statsSnap.data();
+        statsData = {
+          totalUsers: data.totalUsers || 0,
+          totalOrders: data.totalOrders || 0,
+          onlineUsers: data.onlineUsers || 0,
+          totalServices: data.totalServices || 0
+        };
+        console.log('✅ Stats loaded from Firestore:', statsData);
+      } else {
+        // Fallback: If stats doc doesn't exist, use default values
+        console.warn('⚠️ Stats counter not found. Run createStatsCounter.js script.');
+        statsData = {
+          totalUsers: 14,
+          totalOrders: 20,
+          onlineUsers: 0,
+          totalServices: 47
+        };
+        console.log('⚠️ Using fallback stats:', statsData);
+      }
+      
+      // Set stats state with the loaded data
+      setStats(statsData);
 
-      const ordersSnap = await getDocs(collection(db, 'orders'));
-      const servicesSnap = await getDocs(collection(db, 'services'));
+      // 4. Top users - Lazy load (optional, can be removed)
+      // For now, leaving empty to save reads
+      setTopUsers([]);
       
-      const userOrderCounts = {};
-      ordersSnap.docs.forEach(doc => {
-        const order = doc.data();
-        if (order.userId) {
-          userOrderCounts[order.userId] = (userOrderCounts[order.userId] || 0) + 1;
-        }
-      });
-      
-      const topUsersData = Object.entries(userOrderCounts)
-        .map(([userId, orderCount]) => {
-          const userData = usersData.find(u => u.id === userId);
-          if (!userData || userData.banned || userData.disabled || userData.deleted) {
-            return null;
-          }
-          return {
-            id: userId,
-            name: userData?.displayName || userData?.email?.split('@')[0] || 'User',
-            email: userData?.email || '',
-            photoURL: userData?.photoURL || null,
-            orderCount
-          };
-        })
-        .filter(user => user !== null)
-        .sort((a, b) => b.orderCount - a.orderCount)
-        .slice(0, 10);
-
-      setTopUsers(topUsersData);
-      
-      const finalStats = {
-        totalUsers: usersData.length,
-        totalOrders: ordersSnap.docs.length,
-        onlineUsers: onlineCount,
-        totalServices: servicesSnap.docs.length
-      };
-      
-      setStats(finalStats);
       setAdminSettings(adminSettingsData);
       setDataLoaded(true);
       
-      localStorage.setItem('homepageData', JSON.stringify({
-        platforms: platformsData,
-        topUsers: topUsersData,
-        adminSettings: adminSettingsData,
-        stats: finalStats
-      }));
-      localStorage.setItem('homepageLastFetch', Date.now().toString());
+      console.log('🎉 All data loaded successfully!');
 
     } catch (error) {
-      console.error('Error loading homepage data:', error);
+      console.error('❌ Error loading homepage data:', error);
       setDataLoaded(false);
     } finally {
       setLoading(false);

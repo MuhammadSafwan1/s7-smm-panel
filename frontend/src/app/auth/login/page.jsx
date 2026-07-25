@@ -70,6 +70,14 @@ function LoginPage() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      // ✅ Check if email is verified
+      if (!user.emailVerified) {
+        setError('Please verify your email first. Check your inbox for verification link.');
+        toast.error('Email not verified! Check your inbox.', { duration: 5000 });
+        setLoading(false);
+        return;
+      }
+
       // Clear app 2FA verification on new login (keep Cloudflare verification)
       sessionStorage.removeItem('app_2fa_verified');
       sessionStorage.removeItem('app_2fa_verified_at');
