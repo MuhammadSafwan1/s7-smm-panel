@@ -5,20 +5,18 @@ import { useAuth } from '@/context/AuthContext';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { PageLoader } from '@/components/common/Loader';
+import { cachedQuery } from '@/lib/cache';
 import Link from 'next/link';
-import { FiArrowLeft, FiDownload, FiCheck, FiClock, FiX, FiCreditCard, FiDollarSign } from 'react-icons/fi';
+import { FiArrowLeft, FiDownload, FiCheck, FiClock, FiXCircle, FiCreditCard, FiDollarSign } from 'react-icons/fi';
 import { useCurrency } from '@/context/CurrencyContext';
 
 export default function TransactionsPage() {
   const { user, loading: authLoading } = useAuth();
   const { format } = useCurrency();
   const [transactions, setTransactions] = useState([]);
-  const [withdrawals, setWithdrawals] = useState([]);
   const [displayedTransactions, setDisplayedTransactions] = useState([]);
-  const [displayedWithdrawals, setDisplayedWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
-  const [tab, setTab] = useState('payments');
   const [selectedTx, setSelectedTx] = useState(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -36,45 +34,39 @@ export default function TransactionsPage() {
 
   const fetchAllData = async () => {
     try {
-      const [paySnap, withSnap] = await Promise.all([
-        getDocs(query(collection(db, 'paymentTransactions'), where('userId', '==', user.uid))),
-        getDocs(query(collection(db, 'withdrawals'), where('userId', '==', user.uid)))
-      ]);
-      setTransactions(
-        paySnap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (b.createdAt?.toDate?.() || b.createdAt) - (a.createdAt?.toDate?.() || a.createdAt))
-      );
-      setWithdrawals(
-        withSnap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (b.createdAt?.toDate?.() || b.createdAt) - (a.createdAt?.toDate?.() || a.createdAt))
-      );
+      console.log('📅 Fetching all user transactions...');
+      
+      const payments = await cachedQuery(`tx:all:${user.uid}`, async () => {
+        const paySnap = await getDocs(query(collection(db, 'paymentTransactions'), where('userId', '==', user.uid)));
+        const paymentsData = paySnap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (b.createdAt?.toDate?.() || b.createdAt) - (a.createdAt?.toDate?.() || a.createdAt));
+        console.log(`✅ Fetched ${paymentsData.length} total payments`);
+        return paymentsData;
+      });
+      
+      setTransactions(payments);
     } catch (e) {
-      console.error(e);
+      console.error('❌ Transaction fetch error:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  const filtered = filter === 'all' 
-    ? transactions 
-    : transactions.filter(tx => tx.status === filter);
-
   // 🚀 Pagination for transactions
   useEffect(() => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+    const filtered = transactions.filter(tx => {
+      if (filter !== 'all' && tx.status !== filter) return false;
+      const txDate = tx.createdAt?.toDate?.() || new Date(tx.createdAt || 0);
+      return txDate >= sevenDaysAgo;
+    });
     const endIndex = page * ITEMS_PER_PAGE;
-    const dataToDisplay = tab === 'payments' ? filtered : withdrawals;
-    const newDisplayed = dataToDisplay.slice(0, endIndex);
-    
-    if (tab === 'payments') {
-      setDisplayedTransactions(newDisplayed);
-      setHasMore(endIndex < filtered.length);
-    } else {
-      setDisplayedWithdrawals(newDisplayed);
-      setHasMore(endIndex < withdrawals.length);
-    }
-  }, [filtered, withdrawals, page, tab, filter]);
+    const newDisplayed = filtered.slice(0, endIndex);
+    setDisplayedTransactions(newDisplayed);
+    setHasMore(endIndex < filtered.length);
+  }, [transactions, page, filter]);
 
   // 🚀 Infinite scroll
   useEffect(() => {
@@ -96,10 +88,10 @@ export default function TransactionsPage() {
     };
   }, [hasMore, loading]);
   
-  // Reset page when tab/filter changes
+  // Reset page when filter changes
   useEffect(() => {
     setPage(1);
-  }, [tab, filter]);
+  }, [filter]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -133,36 +125,14 @@ export default function TransactionsPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Transaction History</h1>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-0.5">View all your deposit transactions</p>
+            <p className="text-gray-400 dark:text-gray-500 text-sm mt-0.5">View all your payment and withdrawal history</p>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#1e3050] p-1 rounded-xl mb-6 w-full sm:w-fit overflow-x-auto">
-          <button
-            onClick={() => setTab('payments')}
-            className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-1 sm:flex-initial ${
-              tab === 'payments'
-                ? 'bg-white dark:bg-[#253a5e] text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-400 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-[#253a5e]/50'
-            }`}
-          >
-            <FiCreditCard size={14} /> Deposits ({transactions.length})
-          </button>
-          <button
-            onClick={() => setTab('withdrawals')}
-            className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex-1 sm:flex-initial ${
-              tab === 'withdrawals'
-                ? 'bg-white dark:bg-[#253a5e] text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-400 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-[#253a5e]/50'
-            }`}
-          >
-            <FiDollarSign size={14} /> Withdrawals ({withdrawals.length})
-          </button>
-        </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+
+          {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
           <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30">
@@ -192,6 +162,15 @@ export default function TransactionsPage() {
           </div>
           <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300">
             <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center shadow-lg shadow-red-600/30">
+                <FiXCircle className="text-white" size={18} />
+              </div>
+              <p className="text-xs text-gray-400 font-medium">Rejected</p>
+            </div>
+            <p className="text-lg font-bold text-gray-900 dark:text-white">{transactions.filter(t => t.status === 'rejected').length}</p>
+          </div>
+          <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center shadow-lg shadow-violet-600/30">
                 <FiDollarSign className="text-white" size={18} />
               </div>
@@ -203,9 +182,8 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        {/* Filters */}
-        {tab === 'payments' && (
-          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        {/* Status Filters */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
             {['all', 'pending', 'verified', 'rejected'].map(status => (
               <button
                 key={status}
@@ -220,11 +198,9 @@ export default function TransactionsPage() {
               </button>
             ))}
           </div>
-        )}
 
         {/* Deposits Tab */}
-        {tab === 'payments' && (
-          <>
+        <>
             {displayedTransactions.length === 0 ? (
               <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-12 text-center border border-gray-100 dark:border-[#253a5e]">
                 <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center mx-auto mb-4">
@@ -248,7 +224,7 @@ export default function TransactionsPage() {
                             backgroundColor: tx.status === 'verified' ? '#16a34a' : tx.status === 'pending' ? '#eab308' : '#ef4444',
                             boxShadow: `0 8px 20px -4px ${tx.status === 'verified' ? '#16a34a50' : tx.status === 'pending' ? '#eab30850' : '#ef444450'}`
                           }}>
-                          {tx.status === 'verified' ? <FiCheck className="text-white" size={18} /> : tx.status === 'pending' ? <FiClock className="text-white" size={18} /> : <FiX className="text-white" size={18} />}
+                          {tx.status === 'verified' ? <FiCheck className="text-white" size={18} /> : tx.status === 'pending' ? <FiClock className="text-white" size={18} /> : <FiXCircle className="text-white" size={18} />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 dark:text-white">{tx.paymentMethodName}</p>
@@ -269,65 +245,18 @@ export default function TransactionsPage() {
               </div>
             )}
           </>
-        )}
-
-        {/* Withdrawals Tab */}
-        {tab === 'withdrawals' && (
-          <>
-            {withdrawals.length === 0 ? (
-              <div className="bg-white dark:bg-[#1a2742] rounded-2xl p-12 text-center border border-gray-100 dark:border-[#253a5e]">
-                <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center mx-auto mb-4">
-                  <FiDollarSign className="text-gray-400 dark:text-gray-500" size={28} />
-                </div>
-                <p className="text-gray-900 dark:text-white font-semibold text-lg">No withdrawal requests</p>
-                <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Your withdrawal history will appear here</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {displayedWithdrawals.map(w => (
-                  <div key={w.id} className="bg-white dark:bg-[#1a2742] rounded-2xl p-4 border border-gray-100 dark:border-[#253a5e] hover:shadow-lg transition-all duration-300">
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg"
-                          style={{
-                            backgroundColor: w.status === 'approved' ? '#16a34a' : w.status === 'pending' ? '#eab308' : '#ef4444',
-                            boxShadow: `0 8px 20px -4px ${w.status === 'approved' ? '#16a34a50' : w.status === 'pending' ? '#eab30850' : '#ef444450'}`
-                          }}>
-                          {w.status === 'approved' ? <FiCheck className="text-white" size={18} /> : w.status === 'pending' ? <FiClock className="text-white" size={18} /> : <FiX className="text-white" size={18} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 dark:text-white">{w.methodName}</p>
-                          <p className="text-sm text-gray-400 dark:text-gray-500">
-                            {new Date(w.createdAt?.toDate?.() || w.createdAt).toLocaleDateString()} at {new Date(w.createdAt?.toDate?.() || w.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Account: {w.accountName} — {w.accountNumber}</p>
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{format(w.amount)}</p>
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1 ${getStatusColor(w.status)}`}>
-                          {w.status === 'pending' ? 'Pending' : w.status === 'approved' ? 'Approved' : 'Rejected'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
         
         {/* 🚀 Infinite Scroll Trigger */}
-        {hasMore && !loading && (tab === 'payments' ? displayedTransactions.length > 0 : displayedWithdrawals.length > 0) && (
+        {hasMore && !loading && displayedTransactions.length > 0 && (
           <div ref={loadMoreRef} className="py-6 text-center">
             <div className="inline-block w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Loading more...</p>
           </div>
         )}
         
-        {!hasMore && (tab === 'payments' ? displayedTransactions.length > 0 : displayedWithdrawals.length > 0) && (
+        {!hasMore && displayedTransactions.length > 0 && (
           <div className="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-            All {tab === 'payments' ? 'transactions' : 'withdrawals'} loaded
+            All transactions loaded
           </div>
         )}
       </div>
@@ -339,7 +268,7 @@ export default function TransactionsPage() {
             <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-[#253a5e] sticky top-0 bg-white dark:bg-[#1a2742]">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">Transaction Details</h3>
               <button onClick={() => setSelectedTx(null)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
-                <FiX size={16} />
+                <FiXCircle size={16} />
               </button>
             </div>
 
@@ -351,7 +280,7 @@ export default function TransactionsPage() {
                     backgroundColor: selectedTx.status === 'verified' ? '#16a34a' : selectedTx.status === 'pending' ? '#eab308' : '#ef4444',
                     boxShadow: `0 8px 20px -4px ${selectedTx.status === 'verified' ? '#16a34a50' : selectedTx.status === 'pending' ? '#eab30850' : '#ef444450'}`
                   }}>
-                  {selectedTx.status === 'verified' ? <FiCheck className="text-white" size={20} /> : selectedTx.status === 'pending' ? <FiClock className="text-white" size={20} /> : <FiX className="text-white" size={20} />}
+                  {selectedTx.status === 'verified' ? <FiCheck className="text-white" size={20} /> : selectedTx.status === 'pending' ? <FiClock className="text-white" size={20} /> : <FiXCircle className="text-white" size={20} />}
                 </div>
                 <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(selectedTx.status)}`}>
                   {selectedTx.status === 'pending' ? 'Pending Verification' : selectedTx.status === 'verified' ? 'Verified ✓' : 'Rejected'}

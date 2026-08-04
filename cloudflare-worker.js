@@ -62,6 +62,74 @@ async function handleSmmProxy(body) {
   return { success: true, data };
 }
 
+// ─── authenticated provider calls (order placement / status / cancel / refill) ───
+// Users CANNOT read provider apiKeys from Firestore (admin-only), so the worker
+// verifies the Firebase ID token, reads the provider config server-side, and calls
+// the provider API on the user's behalf.
+
+async function getUidFromIdToken(idToken) {
+  const r = await fetch(
+    'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + FIREBASE_API_KEY,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    }
+  );
+  const data = await r.json();
+  if (!r.ok || !data.users || !data.users[0]) {
+    throw new Error(data.error?.message || 'Unauthorized');
+  }
+  return data.users[0].localId;
+}
+
+function convertFields(fields) {
+  const out = {};
+  for (const [k, v] of Object.entries(fields || {})) {
+    if (v.stringValue !== undefined) out[k] = v.stringValue;
+    else if (v.integerValue !== undefined) out[k] = parseInt(v.integerValue, 10);
+    else if (v.doubleValue !== undefined) out[k] = parseFloat(v.doubleValue);
+    else if (v.booleanValue !== undefined) out[k] = v.booleanValue;
+    else if (v.nullValue !== undefined) out[k] = null;
+    else if (v.timestampValue !== undefined) out[k] = v.timestampValue;
+    else if (v.mapValue) out[k] = convertFields(v.mapValue.fields);
+    else if (v.arrayValue) out[k] = (v.arrayValue.values || []).map(convertFields);
+    else out[k] = v;
+  }
+  return out;
+}
+
+async function getFirestoreDoc(path) {
+  const token = await getAccessToken();
+  const r = await fetch(
+    'https://firestore.googleapis.com/v1/projects/' + PROJECT_ID + '/databases/(default)/documents/' + path,
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  const data = await r.json();
+  if (!r.ok) {
+    if (r.status === 404) throw new Error('Provider not found');
+    throw new Error(data.error?.message || 'Firestore read failed');
+  }
+  return { id: decodeURIComponent(data.name.split('/').pop()), ...convertFields(data.fields) };
+}
+
+async function handleAuthenticatedProxy(body) {
+  const { idToken, providerId, action, ...rest } = body;
+  if (!idToken || !providerId || !action) return { success: false, error: 'Missing fields' };
+  const uid = await getUidFromIdToken(idToken);
+  if (!uid) return { success: false, error: 'Unauthorized' };
+  const provider = await getFirestoreDoc('providers/' + encodeURIComponent(providerId));
+  if (!provider.apiUrl || !provider.apiKey) return { success: false, error: 'Provider misconfigured' };
+  const params = new URLSearchParams({ key: provider.apiKey, action, ...rest });
+  const res = await fetch(provider.apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  const data = await res.json();
+  return { success: true, data, providerName: provider.name || null };
+}
+
 export default {
   async fetch(request) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -168,6 +236,15 @@ export default {
           success: authResult.ok || fsResult.ok,
           auth: authResult, firestore: fsResult,
         }, { headers: CORS });
+      }
+
+      // Authenticated provider call (users place orders / sync status via idToken + providerId)
+      if (body.idToken && body.providerId) {
+        try {
+          return Response.json(await handleAuthenticatedProxy(body), { headers: CORS });
+        } catch (err) {
+          return Response.json({ success: false, error: err.message }, { status: 400, headers: CORS });
+        }
       }
 
       if (body.apiUrl) {

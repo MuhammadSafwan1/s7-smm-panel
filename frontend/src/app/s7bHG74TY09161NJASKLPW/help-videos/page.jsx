@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
 import { FiTrash2, FiEdit2, FiPlus, FiVideo, FiArrowUp, FiArrowDown } from 'react-icons/fi';
 
@@ -33,8 +34,8 @@ export default function AdminHelpVideosPage() {
 
   const fetchVideos = async () => {
     try {
-      const q = query(collection(db, 'helpVideos'), orderBy('sortOrder', 'asc'));
-      const snapshot = await getDocs(q);
+      const q = query(collection(db, 'helpVideos'), orderBy('sortOrder', 'asc'), limit(100));
+      const snapshot = await cachedQuery('collection:help-videos', () => getDocs(q));
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setVideos(data);
     } catch (error) {
@@ -74,6 +75,8 @@ export default function AdminHelpVideosPage() {
       
       resetForm();
       fetchVideos();
+      invalidateCache('help:videos');
+      invalidateCache('collection:help-videos');
     } catch (error) {
       console.error('Error saving help video:', error);
       toast.error('Failed to save help video');
@@ -98,6 +101,8 @@ export default function AdminHelpVideosPage() {
       await deleteDoc(doc(db, 'helpVideos', id));
       toast.success('Help video deleted');
       fetchVideos();
+      invalidateCache('help:videos');
+      invalidateCache('collection:help-videos');
     } catch (error) {
       console.error('Error deleting help video:', error);
       toast.error('Failed to delete help video');
@@ -123,6 +128,8 @@ export default function AdminHelpVideosPage() {
         updateDoc(doc(db, 'helpVideos', newVideos[currentIndex].id), { sortOrder: currentIndex }),
         updateDoc(doc(db, 'helpVideos', newVideos[newIndex].id), { sortOrder: newIndex })
       ]);
+      invalidateCache('help:videos');
+      invalidateCache('collection:help-videos');
       setVideos(newVideos);
       toast.success('Order updated');
     } catch (error) {

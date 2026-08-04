@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
 import { FiPlus, FiEdit2, FiTrash2, FiFileText } from 'react-icons/fi';
 
@@ -22,7 +23,7 @@ export default function PoliciesPage() {
 
   const fetchData = async () => {
     try {
-      const snap = await getDocs(collection(db, 'policies'));
+      const snap = await cachedQuery('collection:policies', () => getDocs(collection(db, 'policies')));
       setPolicies(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.error(e); }
   };
@@ -69,6 +70,8 @@ export default function PoliciesPage() {
       }
       setShowModal(false);
       fetchData();
+      invalidateCache('collection:policies');
+      invalidateCache('policies:list');
     } catch (err) { toast.error(err.message || 'Failed to save'); }
     finally { setSaving(false); }
   };
@@ -79,6 +82,8 @@ export default function PoliciesPage() {
       await deleteDoc(doc(db, 'policies', id));
       toast.success('FAQ deleted');
       fetchData();
+      invalidateCache('collection:policies');
+      invalidateCache('policies:list');
     } catch (err) { toast.error(err.message); }
   };
 
@@ -89,6 +94,8 @@ export default function PoliciesPage() {
         updatedAt: Timestamp.now(),
       });
       fetchData();
+      invalidateCache('collection:policies');
+      invalidateCache('policies:list');
     } catch (err) { toast.error(err.message); }
   };
 

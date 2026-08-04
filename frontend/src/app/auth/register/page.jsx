@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiArrowLeft, FiAlertCircle, FiCheckCircle, FiX } from 'react-icons/fi';
+import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiArrowLeft, FiAlertCircle, FiCheckCircle, FiMinusCircle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { Spinner } from '@/components/common/Loader';
 import MathCaptcha from '@/components/common/MathCaptcha';
@@ -72,8 +72,21 @@ function RegisterForm() {
 
     const { success, error: regError, emailSent } = await register(email, password, name);
     if (success) {
-      toast.success('Account created! Please check your email for verification link.', { duration: 6000 });
-      router.push('/auth/login?verified=pending');
+      // Show detailed toast with spam folder mention
+      toast.success(
+        '🎉 Account created! Please check your inbox AND spam folder to verify your email before signing in.',
+        { 
+          duration: 6000,
+          style: {
+            maxWidth: '500px',
+          }
+        }
+      );
+      
+      // Redirect after delay so user can read the message
+      setTimeout(() => {
+        router.push('/auth/login?registered=true');
+      }, 1500);
     } else {
       const errorMsg = regError?.includes('email-already-in-use')
         ? 'Email already registered. Please login or use another email.'
@@ -178,15 +191,19 @@ function RegisterForm() {
                     setPassword(e.target.value);
                     setError(null);
                   }}
-                  className="input-field pl-9 sm:pl-10 pr-9 sm:pr-10 text-sm sm:text-base py-2.5 sm:py-3"
+                  className="input-field pl-9 sm:pl-10 pr-12 text-sm sm:text-base py-2.5 sm:py-3"
                   required
                   disabled={authLoading}
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 text-sm sm:text-base"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 text-sm sm:text-base z-10"
                   disabled={authLoading}
+                  tabIndex="-1"
                 >
                   {showPassword ? <FiEyeOff /> : <FiEye />}
                 </button>
@@ -202,7 +219,7 @@ function RegisterForm() {
                       {passwordRules.minLength ? (
                         <FiCheckCircle className="text-green-500 flex-shrink-0" />
                       ) : (
-                        <FiX className="text-red-500 flex-shrink-0" />
+                        <FiMinusCircle className="text-red-500 flex-shrink-0" />
                       )}
                       <span className={passwordRules.minLength ? 'text-green-700 dark:text-green-300' : 'text-red-600 dark:text-red-400'}>
                         Minimum 8 characters
@@ -212,7 +229,7 @@ function RegisterForm() {
                       {passwordRules.maxLength ? (
                         <FiCheckCircle className="text-green-500 flex-shrink-0" />
                       ) : (
-                        <FiX className="text-red-500 flex-shrink-0" />
+                        <FiMinusCircle className="text-red-500 flex-shrink-0" />
                       )}
                       <span className={passwordRules.maxLength ? 'text-green-700 dark:text-green-300' : 'text-red-600 dark:text-red-400'}>
                         Maximum 21 characters
@@ -222,7 +239,7 @@ function RegisterForm() {
                       {passwordRules.hasUpperCase ? (
                         <FiCheckCircle className="text-green-500 flex-shrink-0" />
                       ) : (
-                        <FiX className="text-red-500 flex-shrink-0" />
+                        <FiMinusCircle className="text-red-500 flex-shrink-0" />
                       )}
                       <span className={passwordRules.hasUpperCase ? 'text-green-700 dark:text-green-300' : 'text-red-600 dark:text-red-400'}>
                         At least 1 uppercase letter (A-Z)
@@ -232,7 +249,7 @@ function RegisterForm() {
                       {passwordRules.hasNumber ? (
                         <FiCheckCircle className="text-green-500 flex-shrink-0" />
                       ) : (
-                        <FiX className="text-red-500 flex-shrink-0" />
+                        <FiMinusCircle className="text-red-500 flex-shrink-0" />
                       )}
                       <span className={passwordRules.hasNumber ? 'text-green-700 dark:text-green-300' : 'text-red-600 dark:text-red-400'}>
                         At least 1 number (0-9)
@@ -242,7 +259,7 @@ function RegisterForm() {
                       {passwordRules.hasSymbol ? (
                         <FiCheckCircle className="text-green-500 flex-shrink-0" />
                       ) : (
-                        <FiX className="text-red-500 flex-shrink-0" />
+                        <FiMinusCircle className="text-red-500 flex-shrink-0" />
                       )}
                       <span className={passwordRules.hasSymbol ? 'text-green-700 dark:text-green-300' : 'text-red-600 dark:text-red-400'}>
                         At least 1 symbol (!@#$%^&* etc)
@@ -258,25 +275,20 @@ function RegisterForm() {
               <div className="relative">
                 <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400 text-sm sm:text-base" />
                 <input
-                  type={showConfirmPassword ? 'text' : 'password'}
+                  type="password"
                   placeholder="••••••••"
                   value={confirmPassword}
                   onChange={(e) => {
                     setConfirmPassword(e.target.value);
                     setError(null);
                   }}
-                  className="input-field pl-9 sm:pl-10 pr-9 sm:pr-10 text-sm sm:text-base py-2.5 sm:py-3"
+                  className="input-field pl-9 sm:pl-10 text-sm sm:text-base py-2.5 sm:py-3"
                   required
                   disabled={authLoading}
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 text-sm sm:text-base"
-                  disabled={authLoading}
-                >
-                  {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
-                </button>
               </div>
 
               {confirmPassword.length > 0 && (
@@ -288,7 +300,7 @@ function RegisterForm() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs">
-                      <FiX className="text-red-500" />
+                      <FiMinusCircle className="text-red-500" />
                       <span className="text-red-600 dark:text-red-400">Passwords do not match</span>
                     </div>
                   )}

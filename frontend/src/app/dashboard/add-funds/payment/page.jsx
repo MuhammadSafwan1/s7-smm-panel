@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, Timestamp, query, where, doc } from 'firebase/firestore';
+import { cachedQuery } from '@/lib/cache';
 import { PageLoader } from '@/components/common/Loader';
 import Link from 'next/link';
-import { FiArrowLeft, FiUpload, FiX, FiCreditCard, FiInfo, FiCheckCircle } from 'react-icons/fi';
+import { FiArrowLeft, FiUpload, FiXCircle, FiCreditCard, FiInfo, FiCheckCircle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useCurrency } from '@/context/CurrencyContext';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -45,7 +46,7 @@ function PaymentForm() {
 
   const fetchPaymentMethod = async () => {
     try {
-      const snap = await getDocs(query(collection(db, 'paymentMethods'), where('__name__', '==', methodId)));
+      const snap = await cachedQuery('doc:paymentMethods/' + methodId, () => getDocs(query(collection(db, 'paymentMethods'), where('__name__', '==', methodId))));
       if (!snap.empty) {
         const method = { id: snap.docs[0].id, ...snap.docs[0].data() };
         if (method.isActive) {
@@ -192,6 +193,31 @@ function PaymentForm() {
       }
       
       amountInPKR = parseFloat(amountInPKR.toFixed(2));
+      
+      // 🚀 DUPLICATE CHECK: Same Transaction ID + Same Payment Method (own user's verified transactions)
+      // NOTE: Cross-user duplicates are caught by the admin at verification time.
+      if (form.transactionId && form.transactionId.trim()) {
+        const duplicateQuery = query(
+          collection(db, 'paymentTransactions'),
+          where('userId', '==', user.uid),
+          where('transactionId', '==', form.transactionId.trim()),
+          where('paymentMethodName', '==', paymentMethod.name),
+          where('status', '==', 'verified')
+        );
+        
+        const duplicateSnap = await cachedQuery('collection:paymentTransactions', () => getDocs(duplicateQuery));
+        
+        if (!duplicateSnap.empty) {
+          toast.error(
+            `⚠️ Transaction Already Submitted!\n\n` +
+            `This transaction ID has already been verified with ${paymentMethod.name}.\n` +
+            `Please use a different transaction ID.`,
+            { duration: 6000 }
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
       
       await addDoc(collection(db, 'paymentTransactions'), {
         userId: user.uid,
@@ -541,7 +567,7 @@ function PaymentForm() {
                         }}
                         className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors shadow-lg"
                       >
-                        <FiX className="text-lg" />
+                        <FiXCircle className="text-lg" />
                       </button>
                     </div>
                   ) : (

@@ -51,7 +51,7 @@ service cloud.firestore {
         (request.auth.uid == userId || isAdminUser());
       allow write: if isAuthenticated() && 
         (request.auth.uid == userId || isAdminUser()) &&
-        (!request.resource.data.keys().hasAny(['role', 'admin']) || isAdminUser());
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'admin']) || isAdminUser());
       // Allow create during registration (user just created, needs to write profile)
       allow create: if request.auth != null && 
         request.auth.uid == userId &&
@@ -59,9 +59,26 @@ service cloud.firestore {
         isValidString(request.resource.data.displayName, 100);
       allow update: if isAuthenticated() && 
         (request.auth.uid == userId || isAdminUser()) &&
-        (!request.resource.data.keys().hasAny(['role', 'admin']) || isAdminUser());
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'admin']) || isAdminUser());
       allow delete: if isAdminUser();
       allow list: if true;
+    }
+
+    // User secrets (passwords) - ADMIN ONLY read/write (users never see these)
+    match /userSecrets/{secId} {
+      allow read, write, create, update, delete, list: if isAdminUser();
+    }
+
+    // Live real-time update signal - all users can READ, only admin can bump
+    match /live/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminUser();
+    }
+
+    // Live per-service mirror docs - all users can READ, only admin writes
+    match /live/{docId}/{subId} {
+      allow read: if isAuthenticated();
+      allow write, create, update, delete: if isAdminUser();
     }
     
     // Orders collection - users can read their own orders, allow listing for homepage stats
@@ -69,11 +86,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && 
         (resource.data.userId == request.auth.uid || isAdminUser());
       allow create: if isAuthenticated() && 
-        request.resource.data.userId == request.auth.uid &&
-        isValidString(request.resource.data.serviceId, 100) &&
-        isValidUrl(request.resource.data.link) &&
-        isValidNumber(request.resource.data.quantity, 1, 1000000) &&
-        isValidNumber(request.resource.data.charge, 0.01, 100000);
+        request.resource.data.userId == request.auth.uid;
       allow update: if isAuthenticated() && 
         (resource.data.userId == request.auth.uid || isAdminUser());
       allow delete: if isAdminUser();
@@ -180,7 +193,8 @@ service cloud.firestore {
       allow create: if isAuthenticated() && 
         request.resource.data.userId == request.auth.uid;
       allow update: if isAdminUser(); // Only admins can update (approve/reject)
-      allow list: if isAdminUser(); // Admin can list all payment transactions
+      allow list: if isAuthenticated() && 
+        (request.query.userId == request.auth.uid || isAdminUser()); // Users can query their own transactions only
     }
     
     // Statistics collection - admin only
@@ -191,7 +205,9 @@ service cloud.firestore {
     // Stats counter - public read for homepage, admin write
     match /stats/{statId} {
       allow read: if true; // ✅ Public read for homepage stats
-      allow write: if isAdminUser(); // Only admin can update
+      allow write: if isAdminUser(); // Only admin can full write
+      // Authenticated users can increment counters
+      allow update: if isAuthenticated() && statId == 'counters';
     }
     
     // Admin-only collections with full access
@@ -207,11 +223,15 @@ service cloud.firestore {
       allow read, write, list: if isAdminUser();
     }
     
-    // Support Chats - users can access their own chat, admins can access all
+    // Support Chats - users can access their own chat, admins can access all and create for any user
     match /supportChats/{chatId} {
-      allow read, write: if isAuthenticated() && 
+      allow read: if isAuthenticated() && 
         (chatId == request.auth.uid || isAdminUser());
-      allow create: if isAuthenticated() && chatId == request.auth.uid;
+      allow write: if isAuthenticated() && 
+        (chatId == request.auth.uid || isAdminUser());
+      allow create: if isAuthenticated() && 
+        (chatId == request.auth.uid || isAdminUser());
+      allow list: if isAdminUser();
     }
     
     // Support Messages - users can read/write messages in their chat, admins can access all

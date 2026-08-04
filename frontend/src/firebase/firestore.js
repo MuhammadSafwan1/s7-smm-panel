@@ -1,5 +1,4 @@
 import {
-  getFirestore,
   collection,
   doc,
   addDoc,
@@ -20,9 +19,10 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import app from './firebase.config';
+import app, { db as firestoreDb } from './firebase.config';
 
-const db = getFirestore(app);
+// Use Firestore instance from firebase.config.js (already initialized with settings)
+const db = firestoreDb;
 const storage = getStorage(app);
 
 // ==================== GENERIC CRUD HELPERS ====================

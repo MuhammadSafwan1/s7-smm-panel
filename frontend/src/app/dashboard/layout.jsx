@@ -2,18 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { db } from '@/firebase/firestore';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, collection } from 'firebase/firestore';
 import { useAuth } from '@/context/AuthContext';
+import toast from 'react-hot-toast';
 import MaintenanceMode from '@/components/common/MaintenanceMode';
 import MaintenanceMessage from '@/components/common/MaintenanceMessage';
 import { PageLoader } from '@/components/common/Loader';
 import BanCheck from '@/components/common/BanCheck';
+import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
-import { cachedQuery } from '@/lib/cache';
+import { cachedQuery, invalidateCache, patchServiceInCache } from '@/lib/cache';
+import { SERVICES_UPDATED_EVENT, notifyServicesUpdatedFull } from '@/lib/liveSync';
 
 export default function DashboardLayout({ children }) {
-  const { user } = useAuth();
+  const { user, userProfile, is2FAVerified } = useAuth(); // 🔒 Get 2FA verified state
   const pathname = usePathname();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [loginEnabled, setLoginEnabled] = useState(true);
@@ -31,6 +35,45 @@ export default function DashboardLayout({ children }) {
     checkSettings();
   }, [user]);
 
+  // 🟢 REAL-TIME: per-service mirror from live/services → patch ONLY the changed service (no re-reads)
+  useEffect(() => {
+    let unsubscribe = null;
+    try {
+      unsubscribe = onSnapshot(collection(db, 'live', 'services'), (snap) => {
+        snap.docChanges().forEach((change) => {
+          const payload = { id: change.doc.id, ...change.doc.data() };
+          if (!payload.id || payload.id.startsWith('_')) return;
+          patchServiceInCache(payload); // patch cache arrays in place (~0 reads)
+          try { window.dispatchEvent(new CustomEvent(SERVICES_UPDATED_EVENT, { detail: payload })); } catch (e) { /* ignore */ }
+        });
+      });
+    } catch (e) {
+      console.warn('⚠️ Live service patch listener failed:', e.message);
+    }
+    return () => { try { unsubscribe && unsubscribe(); } catch (e) { /* ignore */ } };
+  }, []);
+
+  // 🟢 REAL-TIME (manual button): live/meta version bump → bust services cache only
+  useEffect(() => {
+    const INIT = Symbol('initial');
+    let last = INIT;
+    let unsubscribe = null;
+    try {
+      unsubscribe = onSnapshot(doc(db, 'live', 'meta'), (snap) => {
+        const v = snap.exists() ? (snap.data().version ?? null) : null;
+        if (last === INIT) { last = v; return; }
+        if (v === null || v === last) return;
+        last = v;
+        console.log('🔄 REAL-TIME: manual service refresh (v' + v + ')');
+        notifyServicesUpdatedFull();
+        toast('🔄 Services refreshed');
+      });
+    } catch (e) {
+      console.warn('⚠️ Live meta listener failed:', e.message);
+    }
+    return () => { try { unsubscribe && unsubscribe(); } catch (e) { /* ignore */ } };
+  }, []);
+
   const getSectionFromPath = () => {
     if (pathname === '/dashboard') return 'Dashboard';
     if (pathname.startsWith('/dashboard/orders')) return 'Orders';
@@ -43,7 +86,7 @@ export default function DashboardLayout({ children }) {
 
   const checkSettings = async () => {
     try {
-      const settingsDoc = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
+      const settingsDoc = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 120000);
       if (settingsDoc.exists()) {
         const data = settingsDoc.data();
         const maintenance = data.maintenanceMode || false;
@@ -103,6 +146,15 @@ export default function DashboardLayout({ children }) {
   };
 
   if (loading) {
+    return <PageLoader />;
+  }
+
+  // 🔒 NEW: Check if user has 2FA enabled but not verified in this session
+  if (user && userProfile?.twoFactorEnabled && !is2FAVerified) {
+    // Redirect to login so user can complete 2FA
+    if (typeof window !== 'undefined') {
+      router.push('/auth/login');
+    }
     return <PageLoader />;
   }
 

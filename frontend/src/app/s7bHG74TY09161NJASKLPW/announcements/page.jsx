@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, addDoc, getDocs, getDoc, deleteDoc, doc, updateDoc, serverTimestamp, query, orderBy, where, limit } from 'firebase/firestore';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
-import { FiTrash2, FiEdit2, FiPlus, FiBell, FiX, FiUsers, FiGlobe, FiUser } from 'react-icons/fi';
+import { FiTrash2, FiEdit2, FiPlus, FiBell, FiXCircle, FiUsers, FiGlobe, FiUser } from 'react-icons/fi';
 import { useCurrency } from '@/context/CurrencyContext';
 
 export default function AdminAnnouncementsPage() {
@@ -45,8 +46,8 @@ export default function AdminAnnouncementsPage() {
 
   const fetchAnnouncements = async () => {
     try {
-      const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
+      const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'), limit(100));
+      const snapshot = await cachedQuery('collection:announcements', () => getDocs(q));
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAnnouncements(data);
     } catch (error) {
@@ -74,7 +75,7 @@ export default function AdminAnnouncementsPage() {
         where('email', '<=', term + '\uf8ff'),
         limit(10)
       );
-      const emailSnapshot = await getDocs(emailQuery);
+      const emailSnapshot = await cachedQuery(`collection:users:email:${term}`, () => getDocs(emailQuery));
       
       // Search by name (prefix match)
       const nameQuery = query(
@@ -83,7 +84,7 @@ export default function AdminAnnouncementsPage() {
         where('displayName', '<=', term + '\uf8ff'),
         limit(10)
       );
-      const nameSnapshot = await getDocs(nameQuery);
+      const nameSnapshot = await cachedQuery(`collection:users:name:${term}`, () => getDocs(nameQuery));
 
       // Search by username (prefix match)
       const usernameQuery = query(
@@ -92,7 +93,7 @@ export default function AdminAnnouncementsPage() {
         where('username', '<=', term + '\uf8ff'),
         limit(10)
       );
-      const usernameSnapshot = await getDocs(usernameQuery);
+      const usernameSnapshot = await cachedQuery(`collection:users:username:${term}`, () => getDocs(usernameQuery));
 
       // Merge results, avoid duplicates
       const resultsMap = new Map();
@@ -169,6 +170,7 @@ export default function AdminAnnouncementsPage() {
       
       resetForm();
       fetchAnnouncements();
+      invalidateCache('collection:announcements');
     } catch (error) {
       console.error('Error saving announcement:', error);
       toast.error('Failed to save announcement');
@@ -193,7 +195,7 @@ export default function AdminAnnouncementsPage() {
         where('serviceId', '==', trimmedId),
         limit(1)
       );
-      const querySnapshot = await getDocs(servicesQuery);
+      const querySnapshot = await cachedQuery(`collection:services:byServiceId:${trimmedId}`, () => getDocs(servicesQuery));
       
       if (!querySnapshot.empty) {
         return { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
@@ -206,7 +208,7 @@ export default function AdminAnnouncementsPage() {
           where('serviceId', '==', numericId),
           limit(1)
         );
-        const numSnapshot = await getDocs(numQuery);
+        const numSnapshot = await cachedQuery(`collection:services:byServiceId:${numericId}`, () => getDocs(numQuery));
         
         if (!numSnapshot.empty) {
           return { id: numSnapshot.docs[0].id, ...numSnapshot.docs[0].data() };
@@ -284,6 +286,7 @@ export default function AdminAnnouncementsPage() {
       await deleteDoc(doc(db, 'announcements', id));
       toast.success('Announcement deleted');
       fetchAnnouncements();
+      invalidateCache('collection:announcements');
     } catch (error) {
       console.error('Error deleting announcement:', error);
       toast.error('Failed to delete announcement');
@@ -435,7 +438,7 @@ export default function AdminAnnouncementsPage() {
                     {editingId ? 'Edit Announcement' : 'New Announcement'}
                   </h3>
                   <button onClick={resetForm} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
-                    <FiX size={16} />
+                    <FiXCircle size={16} />
                   </button>
                 </div>
               </div>
@@ -585,7 +588,7 @@ export default function AdminAnnouncementsPage() {
                                 onClick={() => handleRemoveUser(u.uid)}
                                 className="text-amber-500 hover:text-red-500 transition-colors"
                               >
-                                <FiX size={12} />
+                                <FiXCircle size={12} />
                               </button>
                             </div>
                           ))}
@@ -670,7 +673,7 @@ export default function AdminAnnouncementsPage() {
                               className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-red-500 transition-all flex-shrink-0"
                               title="Remove service"
                             >
-                              <FiX size={14} />
+                              <FiXCircle size={14} />
                             </button>
                           </div>
                         ))}

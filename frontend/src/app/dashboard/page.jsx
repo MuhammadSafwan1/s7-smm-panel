@@ -5,12 +5,12 @@ import { useAuth } from '@/context/AuthContext';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLoader, Spinner } from '@/components/common/Loader';
-import { FiPackage, FiShoppingBag, FiDollarSign, FiSearch, FiArrowRight, FiArrowLeft, FiChevronRight, FiList, FiUsers, FiTool } from 'react-icons/fi';
+import { FiPackage, FiShoppingBag, FiDollarSign, FiSearch, FiArrowRight, FiArrowLeft, FiChevronRight, FiList, FiUsers, FiTool, FiImage } from 'react-icons/fi';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, addDoc, doc, updateDoc, getDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, addDoc, doc, updateDoc, getDoc, query, where, getCountFromServer, setDoc, increment, onSnapshot } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { useCurrency } from '@/context/CurrencyContext';
-import { cachedQuery } from '@/lib/cache';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 
 function PlatformGrid({ platforms, onSelect, expandedId }) {
   if (platforms.length === 0) {
@@ -237,6 +237,10 @@ function CategoryGrid({ platform, categories, onSelect, expandedId }) {
 }
 
 function ServicesList({ platform, category, services, onBack, selectedService, onServiceSelect, format }) {
+  const isNew = (svc) => {
+    const created = svc.createdAt?.toDate ? svc.createdAt.toDate() : new Date(svc.createdAt || 0);
+    return (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24) <= 3;
+  };
   const [search, setSearch] = useState('');
   const [displayedServices, setDisplayedServices] = useState([]);
   const [page, setPage] = useState(1);
@@ -332,6 +336,33 @@ function ServicesList({ platform, category, services, onBack, selectedService, o
                       {service.maintenance && (
                         <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md shadow-orange-500/30 uppercase whitespace-nowrap">🔧 Maintenance</span>
                       )}
+                      {isNew(service) && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">NEW</span>
+                      )}
+                      {service.isPopular && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-500/20 text-pink-600 dark:text-pink-400">Popular</span>
+                      )}
+                      {service.isFeatured && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">Featured</span>
+                      )}
+                      {service.isBestSeller && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400">🏆 Best Seller</span>
+                      )}
+                      {service.isTrending && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400">📈 Trending</span>
+                      )}
+                      {service.isTopRated && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">⭐ Top Rated</span>
+                      )}
+                      {service.isSale && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400">🏷️ Sale</span>
+                      )}
+                      {service.isPremium && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400">💎 Premium</span>
+                      )}
+                      {service.isVIP && (
+                        <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">👑 VIP</span>
+                      )}
                     </h3>
                     <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-[10px] sm:text-xs">
                       <span className="text-dark-500">Min: <span className="font-semibold text-dark-700 dark:text-dark-300">{parseInt(service.minQuantity || 0).toLocaleString()}</span></span>
@@ -398,7 +429,9 @@ function DashboardContent() {
   const [platforms, setPlatforms] = useState([]);
   const [categories, setCategories] = useState([]);
   const [services, setServices] = useState([]);
-  const [loadedCategoryIds, setLoadedCategoryIds] = useState(new Set()); // 🚀 Track loaded categories
+  const [loadedCategoryIds, setLoadedCategoryIds] = useState(new Set());
+  const [loadedPlatformIds, setLoadedPlatformIds] = useState(new Set());
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [userOrders, setUserOrders] = useState([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState(0);
@@ -415,11 +448,26 @@ function DashboardContent() {
   const [orderData, setOrderData] = useState({ link: '', quantity: '', comments: '' });
   const [orderLoading, setOrderLoading] = useState(false);
   const [showServicesPanel, setShowServicesPanel] = useState(false);
+  const [instagramGifUrl, setInstagramGifUrl] = useState(''); // Empty by default
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileView, setMobileView] = useState('services');
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 1024);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  // On mobile, go back to services view when selection is cleared
+  useEffect(() => {
+    if (isMobile && !selectedService) setMobileView('services');
+  }, [isMobile, selectedService]);
 
   useEffect(() => {
     const fetchWhitelist = async () => {
       try {
-        const settingsDoc = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
+        const settingsDoc = await getDoc(doc(db, 'siteSettings', 'general')); // DIRECT read — never cached, so admin Guide GIF + whitelist show instantly
         if (settingsDoc.exists()) {
           const data = settingsDoc.data();
           const whitelist = data.whitelistedEmails || [];
@@ -427,6 +475,15 @@ function DashboardContent() {
           const whitelistList = Array.isArray(whitelist) ? whitelist.map(e => (e || '').trim().toLowerCase()).filter(Boolean) : [];
           const isUserWhitelisted = !!(currentEmail && whitelistList.includes(currentEmail));
           setIsWhitelisted(isUserWhitelisted);
+          
+          // Fetch Instagram GIF URL (if set by admin in settings)
+          if (data.instagramGuideGif && data.instagramGuideGif.trim()) {
+            setInstagramGifUrl(data.instagramGuideGif);
+            console.log('🎨 Using Cloudinary GIF URL:', data.instagramGuideGif);
+          } else {
+            console.log('⚠️ No Instagram Guide GIF uploaded by admin');
+          }
+          
           console.log('🔐 Whitelist Check:', { 
             currentEmail, 
             whitelist: whitelistList, 
@@ -447,6 +504,37 @@ function DashboardContent() {
     if (user && !authLoading) { fetchData(); }
     else { setLoading(false); }
   }, [user, authLoading]);
+
+  // 🔴 REALTIME: Listen for admin "Push Update" button
+  useEffect(() => {
+    if (!user) return;
+    
+    let lastSeenVersion = null;
+    
+    // Listen to live/meta document for full refresh trigger
+    const unsubscribe = onSnapshot(doc(db, 'live', 'meta'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const currentVersion = data.version || 0;
+        
+        // Only trigger on VERSION CHANGE (not on initial load or refresh)
+        if (lastSeenVersion !== null && currentVersion > lastSeenVersion && data.fullRefresh) {
+          console.log('🔄 Admin pushed service update! Version:', lastSeenVersion, '→', currentVersion);
+          toast('🔄 Services updated by admin', { icon: '✨' });
+          
+          // Refetch services only (not everything)
+          fetchData();
+        }
+        
+        // Update last seen version
+        lastSeenVersion = currentVersion;
+      }
+    }, (error) => {
+      console.warn('⚠️ Realtime listener error:', error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   useEffect(() => {
     if (preselectedPlatformId && platforms.length > 0) {
@@ -469,6 +557,7 @@ function DashboardContent() {
         setExpandedPlatform(p);
         setSelectedPlatform(p);
         setStep('categories');
+        loadPlatformCategories(p.id);
       }
     }
   }, [preselectedPlatformId, platforms, isWhitelisted]);
@@ -476,33 +565,66 @@ function DashboardContent() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 🚀 OPTIMIZED: Fetch stats counter first (1 read)
-      const statsDocRef = doc(db, 'stats', 'counters');
-      const statsSnap = await getDoc(statsDocRef);
+      // 🔴 Check admin push version FIRST
+      const metaDoc = await getDoc(doc(db, 'live', 'meta'));
+      const currentVersion = metaDoc.exists() ? metaDoc.data().version || 0 : 0;
+      const cachedVersion = sessionStorage.getItem('services_version');
       
-      if (statsSnap.exists()) {
-        const statsData = statsSnap.data();
-        setTotalUsers(statsData.totalUsers || 0);
-        setTotalWebsiteOrders(statsData.totalOrders || 0);
-        setTotalServicesCount(statsData.totalServices || 0);
-        setOnlineUsers(statsData.onlineUsers || 0);
-        console.log('✅ Dashboard stats loaded from counter:', statsData);
-      } else {
-        console.warn('⚠️ Stats counter not found in dashboard');
+      if (cachedVersion && parseInt(cachedVersion) < currentVersion) {
+        console.log('🔄 Admin pushed update! Clearing cache...');
+        invalidateCache('services:');
+        invalidateCache('platforms:');
+        invalidateCache('categories:');
       }
+      sessionStorage.setItem('services_version', currentVersion.toString());
       
-      // 🚀 OPTIMIZED: Only fetch platforms initially (5-10 reads)
-      const platSnap = await getDocs(collection(db, 'platforms'));
-      setPlatforms(platSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.isActive !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)));
+      // Helper function with retry logic for count queries
+      const getCountWithRetry = async (queryRef, retries = 2) => {
+        for (let i = 0; i < retries; i++) {
+          try {
+            const snapshot = await getCountFromServer(queryRef);
+            return snapshot.data().count;
+          } catch (err) {
+            console.warn(`⚠️ Count query failed (attempt ${i + 1}/${retries}):`, err.message);
+            if (i === retries - 1) return 0; // Last attempt failed, return 0
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+          }
+        }
+        return 0;
+      };
+      
+      // Fetch platforms and categories with shared cache keys
+      const platformsData = await cachedQuery('platforms:all', async () => {
+        const platSnap = await getDocs(query(collection(db, 'platforms'), where('isActive', '==', true)));
+        return platSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      }, Infinity); // ♾️ Infinite cache - only clears when admin pushes update or tab closes
+      setPlatforms(platformsData);
 
-      // 🚀 DON'T fetch all services - they'll be lazy loaded per category
-      // This saves 47-500+ reads on initial page load
+      // Load categories LAZILY - only when a platform is selected (saves ~350KB of icons)
+      setCategories([]);
+      console.log(`✅ Loaded ${platformsData.length} platforms (categories load lazily on platform select)`);
 
+      // Fetch stats (fresh for accuracy) with retry logic
+      console.log('📊 Fetching LIVE counts from Firestore...');
+      const [totalUsers, totalOrders, totalServices, onlineUsers] = await Promise.all([
+        getCountWithRetry(collection(db, 'users')),
+        getCountWithRetry(collection(db, 'orders')),
+        getCountWithRetry(collection(db, 'services')),
+        getCountWithRetry(query(collection(db, 'users'), where('lastSeen', '>=', new Date(Date.now() - 5 * 60 * 1000)))),
+      ]);
+
+      setTotalUsers(totalUsers);
+      setTotalWebsiteOrders(totalOrders);
+      setTotalServicesCount(totalServices);
+      setOnlineUsers(onlineUsers);
+
+      // User orders — cache per user
       if (user?.uid) {
-        try {
+        const ordersResult = await cachedQuery(`userOrders:${user.uid}`, async () => {
           const userOrdersSnap = await getDocs(query(collection(db, 'orders'), where('userId', '==', user.uid)));
-          setUserOrders(userOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        } catch (e) { console.error('orders fetch error:', e); }
+          return userOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }, Infinity); // ♾️ Infinite cache - only clears when admin pushes update or tab closes
+        setUserOrders(ordersResult);
       }
     } catch (e) { console.error('Dashboard data fetch error:', e); }
     finally { setLoading(false); }
@@ -528,32 +650,61 @@ function DashboardContent() {
     
     // Expand platform and show categories
     if (expandedPlatform?.id === platform.id) {
+      // Collapsing - reset everything
       setExpandedPlatform(null);
       setExpandedCategory(null);
       setSelectedPlatform(null);
       setSelectedCategory(null);
+      setServices([]); // Clear services
+      setLoadedCategoryIds(new Set()); // Clear loaded tracking
       setStep('platforms');
     } else {
-      setExpandedPlatform(platform);
+      // Switching platforms - clear old platform's services
+      if (expandedPlatform?.id !== platform.id) {
+        console.log('🔄 Switching platforms - clearing old services');
+        setServices([]);
+        setLoadedCategoryIds(new Set());
+      }
+      
+setExpandedPlatform(platform);
       setSelectedPlatform(platform);
       setExpandedCategory(null);
       setSelectedCategory(null);
       setStep('categories');
       
-      // 🚀 LAZY LOAD: Fetch categories for this platform only
-      if (categories.length === 0) {
-        console.log('📂 Lazy loading categories for:', platform.name);
-        try {
-          const catSnap = await getDocs(
-            query(collection(db, 'categories'), where('platformId', '==', platform.id), where('isActive', '==', true))
-          );
-          const platformCategories = catSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-          setCategories(prevCats => [...prevCats, ...platformCategories]);
-          console.log(`✅ Loaded ${platformCategories.length} categories for ${platform.name}`);
-        } catch (e) {
-          console.error('Error loading categories:', e);
-        }
-      }
+      // 🚀 LAZY LOAD: Fetch categories for this platform only (prevent 350KB icon download)
+      loadPlatformCategories(platform.id);
+    }
+  };
+
+  const loadPlatformCategories = async (platformId) => {
+    if (loadedPlatformIds.has(platformId)) return;
+    setLoadedPlatformIds(prev => new Set(prev).add(platformId)); // Mark BEFORE fetching
+    setCategoriesLoading(true);
+    try {
+      const platformCategories = await cachedQuery(
+        `/platforms/${platformId}/categories:all`,
+        async () => {
+          const catSnap = await getDocs(query(collection(db, 'categories'), where('platformId', '==', platformId), where('isActive', '==', true)));
+          return catSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        },
+        Infinity // ♾️ Infinite cache - only clears when admin pushes update or tab closes
+      );
+      setCategories(prev => {
+        const existing = new Set(prev.map(c => c.id));
+        return [...prev, ...platformCategories.filter(c => !existing.has(c.id))];
+      });
+      setCategoriesLoading(false);
+      console.log(`✅ Loaded ${platformCategories.length} categories for platform ${platformId}`);
+    } catch (e) {
+      setCategoriesLoading(false);
+      console.error('❌ Error loading categories:', e);
+      toast.error('Failed to load categories');
+      setLoadedPlatformIds(prev => {
+        const n = new Set(prev);
+        n.delete(platformId);
+        return n;
+      });
     }
   };
 
@@ -581,22 +732,34 @@ function DashboardContent() {
     
     // 🚀 LAZY LOAD: Fetch services for this category only (prevent duplicate reads)
     if (!loadedCategoryIds.has(category.id)) {
-      console.log('🔧 Lazy loading services for:', category.name);
+      console.log('🔧 Lazy loading services for:', category.name, 'platformId:', selectedPlatform.id);
       setLoadedCategoryIds(prev => new Set(prev).add(category.id)); // Mark as loaded BEFORE fetching
       try {
-        const svcSnap = await getDocs(
-          query(
-            collection(db, 'services'), 
-            where('categoryId', '==', category.id),
-            where('platformId', '==', selectedPlatform.id),
-            where('isActive', '==', true)
-          )
+        const categoryServices = await cachedQuery(
+          `services:${selectedPlatform.id}:${category.id}`, 
+          async () => {
+            console.log('🔍 Fetching services from Firestore for category:', category.name);
+            const snapshot = await getDocs(
+              query(
+                collection(db, 'services'), 
+                where('categoryId', '==', category.id),
+                where('platformId', '==', selectedPlatform.id),
+                where('isActive', '==', true)
+              )
+            );
+            // Process and return data array (not snapshot)
+            const processedData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            console.log(`✅ Fetched ${processedData.length} services from Firestore`);
+            return processedData;
+          },
+          Infinity // ♾️ Infinite cache - only clears when admin pushes update or tab closes
         );
-        const categoryServices = svcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
         setServices(prevSvcs => [...prevSvcs, ...categoryServices]);
         console.log(`✅ Loaded ${categoryServices.length} services for ${category.name}`);
       } catch (e) {
-        console.error('Error loading services:', e);
+        console.error('❌ Error loading services:', e);
+        toast.error(`Failed to load services: ${e.message}`);
         setLoadedCategoryIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(category.id); // Remove from loaded if error
@@ -628,6 +791,7 @@ function DashboardContent() {
     
     setSelectedService(service);
     setOrderData({ link: '', quantity: service.minQuantity || '', comments: '' });
+    if (isMobile) setMobileView('order');
   };
 
   const calculatePrice = () => {
@@ -643,6 +807,30 @@ function DashboardContent() {
       toast.error(`Quantity must be between ${selectedService.minQuantity} and ${selectedService.maxQuantity}`);
       return;
     }
+    // 🟢 REAL-TIME PRICE GUARD: re-check the service from Firestore (fresh, no cache)
+    try {
+      const freshSnap = await getDoc(doc(db, 'services', selectedService.id));
+      const fresh = freshSnap.exists() ? freshSnap.data() : null;
+      if (!fresh || !fresh.isActive) {
+        toast.error('This service is no longer available. Please pick another.');
+        setSelectedService(null);
+        return;
+      }
+      const freshPrice = parseFloat(fresh.price || 0);
+      if (freshPrice !== parseFloat(selectedService.price || 0)) {
+        invalidateCache('services:');
+        setSelectedService(null);
+        toast.error(`${format(freshPrice)} — Price updated! Please confirm again before ordering.`);
+        return;
+      }
+      // Also confirm min/max still valid
+      if (qty < parseInt(fresh.minQuantity || 0) || qty > parseInt(fresh.maxQuantity || 999999999)) {
+        toast.error('Service quantity has changed. Please refresh and try again.');
+        return;
+      }
+    } catch (err) {
+      console.warn('⚠️ Price guard fetch failed, continuing:', err);
+    }
     const totalCharge = parseFloat(calculatePrice());
     const currentBalance = parseFloat(userProfile?.walletBalance || 0);
     if (currentBalance < totalCharge) {
@@ -655,31 +843,93 @@ function DashboardContent() {
       let providerName = null;
       if (selectedService.providerServiceId && selectedService.providerId) {
         try {
-          const providerSnap = await getDoc(doc(db, 'providers', selectedService.providerId));
-          if (providerSnap.exists()) {
-            const provider = providerSnap.data();
-            providerName = provider.name;
-            const proxyRes = await fetch('https://smm-proxy.ms8347750.workers.dev', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ apiUrl: provider.apiUrl, apiKey: provider.apiKey, action: 'add', service: selectedService.providerServiceId, link: orderData.link, quantity: qty }),
+          // 🔐 Provider apiKey is admin-only in Firestore — place the order via the
+          // Cloudflare worker, which verifies our ID token and calls the provider server-side.
+          const idToken = await user.getIdToken();
+
+          // Prepare order payload
+          const orderPayload = {
+            idToken,
+            providerId: selectedService.providerId,
+            action: 'add',
+            service: selectedService.providerServiceId,
+            link: orderData.link,
+            quantity: qty
+          };
+
+          // Add comments if present (for services with custom comments)
+          if (orderData.comments && orderData.comments.trim()) {
+            orderPayload.comments = orderData.comments.trim();
+          }
+
+          console.log('📤 Sending order to provider:', {
+            service: selectedService.name,
+            quantity: qty,
+            hasComments: !!orderPayload.comments,
+            commentsLength: orderPayload.comments?.length || 0
+          });
+
+          // Try up to 2 times on transient failures (network / rate limit)
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            let proxyResult = null;
+            try {
+              const proxyRes = await fetch('https://smm-proxy.ms8347750.workers.dev', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderPayload),
+              });
+              proxyResult = await proxyRes.json();
+            } catch (fetchErr) {
+              console.warn(`⚠️ Network error (attempt ${attempt}): ${fetchErr.message}`);
+              if (attempt === 1) { await new Promise(r => setTimeout(r, 3000)); continue; }
+              throw new Error('Network error connecting to provider');
+            }
+
+            console.log('📥 Provider response:', {
+              attempt,
+              success: proxyResult.success,
+              orderId: proxyResult.data?.order || null,
+              error: proxyResult.data?.error || null
             });
-            const proxyResult = await proxyRes.json();
-            if (proxyResult.success && proxyResult.data?.order) providerOrderId = proxyResult.data.order;
-            else if (proxyResult.data?.error) throw new Error(`Provider error: ${proxyResult.data.error}`);
+
+            if (proxyResult.success && proxyResult.data?.order) {
+              providerOrderId = proxyResult.data.order;
+              if (proxyResult.providerName) providerName = proxyResult.providerName;
+              break;
+            }
+            if (proxyResult.data?.error) {
+              // Transient errors (rate limit / timeout) → retry once, others surface immediately
+              const msg = String(proxyResult.data.error || '').toLowerCase();
+              if (attempt === 1 && (msg.includes('rate') || msg.includes('timeout') || msg.includes('try again'))) {
+                console.warn(`⚠️ Transient provider error, retrying (attempt ${attempt}): ${proxyResult.data.error}`);
+                await new Promise(r => setTimeout(r, 3000));
+                continue;
+              }
+              throw new Error(`Service error: ${proxyResult.data.error}`);
+            }
+            if (attempt === 1) {
+              console.warn('⚠️ Unknown provider response, retrying...', proxyResult);
+              await new Promise(r => setTimeout(r, 3000));
+              continue;
+            }
+            throw new Error('Service error: Provider returned an invalid response');
           }
         } catch (providerErr) {
           console.error('Provider order error:', providerErr.message);
-          toast.error(`Provider error: ${providerErr.message}. Order saved as pending.`);
+          toast.error(`Order saved as pending. Provider message: ${providerErr.message.replace('Service error: ', '')}`);
         }
       }
       await addDoc(collection(db, 'orders'), {
         userId: user.uid, userEmail: user.email, serviceId: selectedService.serviceId, serviceName: selectedService.name,
         platformId: selectedPlatform?.id, platformName: selectedPlatform?.name, categoryId: selectedCategory?.id, categoryName: selectedCategory?.name,
         providerId: selectedService.providerId || null, providerName, providerServiceId: selectedService.providerServiceId || null, providerOrderId,
+        providerCost: selectedService.providerPrice ? parseFloat((selectedService.providerPrice * qty / 1000).toFixed(4)) : null, // Provider cost
         link: orderData.link, quantity: qty, charge: totalCharge, comments: orderData.comments || '',
         cancelSupported: selectedService.cancelSupported || false, refillSupported: selectedService.refillSupported || false,
-        refillPeriodDays: parseInt(selectedService.refillPeriodDays || 0), status: providerOrderId ? 'processing' : 'pending',
+        hasRefill: selectedService.refillSupported || false,
+        refillDays: parseInt(selectedService.refillDays || selectedService.refillPeriodDays || 0),
+        refillPeriodDays: parseInt(selectedService.refillPeriodDays || selectedService.refillDays || 0), 
+        status: providerOrderId ? 'processing' : 'pending',
         createdAt: new Date(), updatedAt: new Date(),
       });
       const userRef = doc(db, 'users', user.uid);
@@ -688,7 +938,20 @@ function DashboardContent() {
         const newBalance = parseFloat((userSnap.data().walletBalance || 0) - totalCharge).toFixed(4);
         await updateDoc(userRef, { walletBalance: parseFloat(newBalance), totalOrders: (userSnap.data().totalOrders || 0) + 1, totalSpent: parseFloat(((userSnap.data().totalSpent || 0) + totalCharge).toFixed(4)) });
       }
-      toast.success(providerOrderId ? `Order placed on ${providerName}! ID: ${providerOrderId}. ${format(totalCharge)} deducted.` : `Order saved! ${format(totalCharge)} deducted. Processing manually.`);
+      toast.success(providerOrderId ? `Order placed! ID: ${providerOrderId}. ${format(totalCharge)} deducted.` : `Order saved! ${format(totalCharge)} deducted. Processing manually.`);
+      
+      // 🔴 REALTIME COUNTER: increment total orders (homepage stats update instantly)
+      try {
+        await setDoc(doc(db, 'stats', 'counters'), { totalOrders: increment(1) }, { merge: true });
+      } catch (counterErr) {
+        console.warn('⚠️ Failed to update orders counter:', counterErr.message);
+      }
+
+      // Clear user orders + transactions cache (balance will auto-update via listener)
+      invalidateCache(`userOrders:${user.uid}`);
+      invalidateCache(`tx:all:${user.uid}`);
+      console.log('🗑️ Cleared user orders/transactions cache after order placement');
+      
       setSelectedService(null);
       setOrderData({ link: '', quantity: '', comments: '' });
       window.location.reload();
@@ -855,7 +1118,7 @@ function DashboardContent() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6" style={{ display: isMobile && mobileView === 'order' ? 'none' : '' }}>
             {/* Show Platform + Categories only when NOT showing services */}
             {step !== 'services' && (
               <>
@@ -876,6 +1139,19 @@ function DashboardContent() {
                       )}
                     </div>
                   </div>
+
+                  {/* ⚠️ Warning Banner */}
+                  {!expandedPlatform && (
+                    <div className="bg-gradient-to-r from-yellow-50 via-amber-50 to-orange-50 dark:from-yellow-900/20 dark:via-amber-900/20 dark:to-orange-900/20 border-2 border-yellow-400 dark:border-yellow-600 rounded-2xl px-4 py-3 mb-6 shadow-lg">
+                      <div className="flex items-center justify-center gap-2 text-center">
+                        <span className="text-yellow-600 dark:text-yellow-400 text-lg sm:text-xl">⚠️</span>
+                        <p className="text-xs sm:text-sm font-bold text-yellow-800 dark:text-yellow-300 uppercase tracking-wide">
+                          Try Low Target Before Bulk • If Satisfied In Speed Then Re-Order
+                        </p>
+                        <span className="text-yellow-600 dark:text-yellow-400 text-lg sm:text-xl">⚠️</span>
+                      </div>
+                    </div>
+                  )}
 
                   {loading ? (
                     <div className="flex justify-center py-16"><Spinner size="lg" /></div>
@@ -930,7 +1206,7 @@ function DashboardContent() {
 
                     {/* Categories Grid */}
                     <div className="relative z-10">
-                      {loading ? (
+                      {loading || categoriesLoading ? (
                         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
                       ) : (
                         <CategoryGrid 
@@ -1003,12 +1279,30 @@ function DashboardContent() {
           {/* Remove Services Slide-in Panel - services now show in main area */}
 
           <div className="lg:col-span-1">
-            <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-4 sm:p-6 border border-gray-100 dark:border-[#253a5e] sticky top-24 max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-thin scrollbar-thumb-primary-500 scrollbar-track-transparent">
-              <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white mb-3 sm:mb-4">Place Order</h2>
+            <div className="bg-white dark:bg-[#1a2742] rounded-3xl p-4 sm:p-6 border border-gray-100 dark:border-[#253a5e] lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto scrollbar-thin scrollbar-thumb-primary-500 scrollbar-track-transparent">
+
+              {/* Mobile: Back to Services + Selected Service Header */}
+              {isMobile && selectedService && (
+                <div className="mb-4">
+                  <button
+                    onClick={() => { setMobileView('services'); setSelectedService(null); }}
+                    className="flex items-center gap-2 text-sm text-primary-600 dark:text-primary-400 hover:underline mb-3"
+                  >
+                    <FiArrowLeft size={16} /> Back to Services
+                  </button>
+                  <div className="p-3 rounded-xl bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30">
+                    <p className="text-xs text-primary-500 font-semibold mb-0.5">{selectedPlatform?.name} → {selectedCategory?.name}</p>
+                    <p className="font-semibold text-sm text-dark-900 dark:text-white leading-tight">{selectedService.name}</p>
+                    {selectedService.serviceId && <span className="inline-block mt-1 text-xs font-mono font-bold bg-dark-200 dark:bg-dark-700 text-dark-600 dark:text-dark-400 px-2 py-0.5 rounded-lg">#{selectedService.serviceId}</span>}
+                  </div>
+                </div>
+              )}
+
+              <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white mb-3 sm:mb-4">{isMobile && selectedService ? 'Place Order' : 'Place Order'}</h2>
 
               {selectedService ? (
                 <form onSubmit={handleOrderSubmit} className="space-y-4">
-                  <div className="p-3 rounded-xl bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30">
+                  <div className="p-3 rounded-xl bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30" style={{ display: isMobile ? 'none' : '' }}>
                     <p className="text-xs text-primary-500 font-semibold mb-0.5">{selectedPlatform?.name} → {selectedCategory?.name}</p>
                     <p className="font-semibold text-sm text-dark-900 dark:text-white leading-tight">{selectedService.name}</p>
                     {selectedService.serviceId && <span className="inline-block mt-1 text-xs font-mono font-bold bg-dark-200 dark:bg-dark-700 text-dark-600 dark:text-dark-400 px-2 py-0.5 rounded-lg">#{selectedService.serviceId}</span>}
@@ -1059,9 +1353,17 @@ function DashboardContent() {
                 </form>
               ) : (
                 <div className="space-y-4">
-                  <div className="rounded-xl overflow-hidden border border-dark-200 dark:border-dark-700">
-                    <img src="/images/instagram fix.gif" alt="How to disable Instagram Flag for Review" className="w-full h-auto object-contain" />
-                  </div>
+                  {instagramGifUrl ? (
+                    <div className="rounded-xl overflow-hidden border border-dark-200 dark:border-dark-700">
+                      <img src={instagramGifUrl} alt="How to disable Instagram Flag for Review" className="w-full h-auto object-contain" loading="lazy" />
+                    </div>
+                  ) : (
+                    <div className="rounded-xl p-6 bg-yellow-50 dark:bg-yellow-900/10 border-2 border-yellow-200 dark:border-yellow-800/50 text-center">
+                      <FiImage className="text-4xl text-yellow-600 dark:text-yellow-500 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-1">Instagram Guide Not Available</p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400">Admin hasn't uploaded the guide yet</p>
+                    </div>
+                  )}
                   <div className="rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 p-4 space-y-3 text-xs leading-relaxed text-dark-700 dark:text-dark-300">
                     <p className="font-bold text-sm text-red-600 dark:text-red-400">🚫 Important: Instagram Flag Must Be Off!</p>
                     <p>Starting from 2024-08-18, with Instagram's new update, the <strong>FLAG</strong> function must be turned off to receive followers.</p>

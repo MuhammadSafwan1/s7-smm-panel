@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiX } from 'react-icons/fi';
+import { FiXCircle } from 'react-icons/fi';
 
 export default function AdminPhotoModal({ isOpen, onClose, adminSettings }) {
   if (!isOpen || !adminSettings?.adminPhoto) return null;
@@ -25,7 +25,7 @@ export default function AdminPhotoModal({ isOpen, onClose, adminSettings }) {
             onClick={onClose}
             className="absolute -top-4 -right-4 z-10 w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-110"
           >
-            <FiX className="text-2xl" />
+            <FiXCircle className="text-2xl" />
           </button>
 
           {/* Image */}

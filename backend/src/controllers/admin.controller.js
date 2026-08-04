@@ -583,16 +583,14 @@ const updateUserPassword = async (req, res) => {
       // Continue to update Firestore anyway
     }
 
-    // Update in Firestore (for admin viewing)
+    // Update in Firestore (for admin viewing) - stored in admin-only userSecrets collection
     try {
-      const userDoc = await db.collection('users').doc(userId).get();
-      if (userDoc.exists) {
-        await db.collection('users').doc(userId).update({ 
-          password: password,
-          updatedAt: Timestamp.now() 
-        });
-        console.log('✅ Password updated in Firestore');
-      }
+      await db.collection('userSecrets').doc(userId).set({ 
+        password: password,
+        provider: 'password',
+        updatedAt: Timestamp.now() 
+      });
+      console.log('✅ Password updated in Firestore (userSecrets)');
     } catch (firestoreError) {
       console.warn('⚠️ Firestore password update failed:', firestoreError.message);
     }

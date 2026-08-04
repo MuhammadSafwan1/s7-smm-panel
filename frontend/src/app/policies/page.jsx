@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs } from 'firebase/firestore';
+import { cachedQuery } from '@/lib/cache';
 import { PageLoader } from '@/components/common/Loader';
 import Link from 'next/link';
 import { FiArrowLeft, FiFileText, FiHelpCircle, FiChevronDown } from 'react-icons/fi';
@@ -17,10 +18,12 @@ export default function PoliciesPage() {
 
   const fetchPolicies = async () => {
     try {
-      const snap = await getDocs(collection(db, 'policies'));
-      const policiesList = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(p => p.isActive);
+      const policiesList = await cachedQuery('policies:list', async () => {
+        const snap = await getDocs(collection(db, 'policies'));
+        return snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(p => p.isActive);
+      });
       setPolicies(policiesList);
       if (policiesList.length > 0 && !selectedPolicy) {
         setSelectedPolicy(policiesList[0]);
@@ -45,8 +48,8 @@ export default function PoliciesPage() {
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-500/10 dark:to-secondary-500/10 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary-500/10">
               <FiHelpCircle className="text-4xl text-primary-500" />
             </div>
-            <p className="text-dark-700 dark:text-white font-bold text-xl mb-2">No FAQs Available</p>
-            <p className="text-dark-400 text-sm">Frequently Asked Questions will appear here once added by admin</p>
+            <p className="text-dark-700 dark:text-white font-bold text-xl mb-2">No Terms Available</p>
+            <p className="text-dark-400 text-sm">Terms of Service will appear here once added by admin</p>
           </div>
         </div>
       </div>
@@ -66,8 +69,8 @@ export default function PoliciesPage() {
             <FiArrowLeft className="text-lg text-dark-500 dark:text-dark-400" />
           </Link>
           <div>
-            <h1 className="text-3xl font-bold gradient-text">FAQs</h1>
-            <p className="text-dark-500 dark:text-dark-400 text-sm mt-0.5">Frequently Asked Questions</p>
+            <h1 className="text-3xl font-bold gradient-text">Terms of Service</h1>
+            <p className="text-dark-500 dark:text-dark-400 text-sm mt-0.5">Terms & Conditions</p>
           </div>
         </motion.div>
 

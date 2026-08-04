@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, updateDoc, doc, Timestamp, getDoc, increment, query, where } from 'firebase/firestore';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
-import { FiCheck, FiX, FiEye, FiDownload } from 'react-icons/fi';
+import { FiCheck, FiXCircle, FiEye, FiDownload } from 'react-icons/fi';
 import { useCurrency } from '@/context/CurrencyContext';
 
 export default function PaymentVerificationPage() {
@@ -58,14 +59,34 @@ export default function PaymentVerificationPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const snap = await getDocs(collection(db, 'paymentTransactions'));
-      setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) { console.error(e); }
+      console.log('📅 [ADMIN] Fetching all payment transactions...');
+      
+      const txData = await cachedQuery('admin:paymentVerification', async () => {
+        const snap = await getDocs(collection(db, 'paymentTransactions'));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      }, 30000);
+      
+      setTransactions(txData);
+      
+      console.log(`✅ [ADMIN] Fetched ${txData.length} total transactions`);
+      console.log(`  - Pending: ${txData.filter(t => t.status === 'pending').length}`);
+      console.log(`  - Verified: ${txData.filter(t => t.status === 'verified').length}`);
+      console.log(`  - Rejected: ${txData.filter(t => t.status === 'rejected').length}`);
+    } catch (e) { 
+      console.error('❌ [ADMIN] Transaction fetch error:', e); 
+    }
     finally { setLoading(false); }
   };
 
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
   const filtered = transactions
-    .filter(tx => tx.status === filter)
+    .filter(tx => {
+      if (tx.status !== filter) return false;
+      const txDate = tx.createdAt?.toDate?.() || new Date(tx.createdAt || 0);
+      return txDate >= sevenDaysAgo;
+    })
     .sort((a, b) => {
       const aTime = a.createdAt?.toDate?.()?.getTime() || new Date(a.createdAt || 0).getTime();
       const bTime = b.createdAt?.toDate?.()?.getTime() || new Date(b.createdAt || 0).getTime();
@@ -80,14 +101,15 @@ export default function PaymentVerificationPage() {
         return;
       }
 
-      // DUPLICATE CHECK: Verify transaction ID hasn't been used before
+      // DUPLICATE CHECK: Same Transaction ID + Same Payment Method
       if (tx.transactionId && tx.transactionId.trim()) {
         const txIdLower = tx.transactionId.trim().toLowerCase();
         const duplicateTx = transactions.find(t => 
           t.id !== id && 
           t.status === 'verified' && 
           t.transactionId && 
-          t.transactionId.trim().toLowerCase() === txIdLower
+          t.transactionId.trim().toLowerCase() === txIdLower &&
+          t.paymentMethodName === tx.paymentMethodName
         );
         
         if (duplicateTx) {
@@ -268,6 +290,10 @@ export default function PaymentVerificationPage() {
 
       setShowModal(false);
       fetchData();
+      invalidateCache('admin:paymentVerification');
+      invalidateCache(`tx:all:${tx.userId}`);
+      invalidateCache(`collection:transactions:user:${tx.userId}`);
+      invalidateCache('collection:paymentTransactions');
     } catch (e) { 
       toast.error(e.message || 'Failed to verify payment'); 
     }
@@ -283,6 +309,8 @@ export default function PaymentVerificationPage() {
       toast.success('Payment rejected');
       setShowModal(false);
       fetchData();
+      invalidateCache('admin:paymentVerification');
+      invalidateCache('collection:paymentTransactions');
     } catch (e) { toast.error(e.message); }
   };
 
@@ -534,7 +562,7 @@ export default function PaymentVerificationPage() {
                       onClick={() => handleReject(selectedTx.id)}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all"
                     >
-                      <FiX className="text-lg" /> Reject Payment
+                      <FiXCircle className="text-lg" /> Reject Payment
                     </button>
                   </div>
                 )}

@@ -7,24 +7,39 @@ import { db } from '@/firebase/firestore';
 import { cachedQuery } from '@/lib/cache';
 
 export default function WhatsAppButton() {
-  const [whatsappUrl, setWhatsappUrl] = useState('https://whatsapp.com/channel/0029Vb5txzUJkK714Q3onN1l');
-  const [enabled, setEnabled] = useState(true);
+  const [whatsappUrl, setWhatsappUrl] = useState('');
+  const [enabled, setEnabled] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     fetchWhatsAppSettings();
   }, []);
 
+  // Hide button on mobile while support chat is open (desktop unaffected)
+  useEffect(() => {
+    const onOpen  = () => setChatOpen(true);
+    const onClose = () => setChatOpen(false);
+    window.addEventListener('msf:chat-open', onOpen);
+    window.addEventListener('msf:chat-close', onClose);
+    return () => {
+      window.removeEventListener('msf:chat-open', onOpen);
+      window.removeEventListener('msf:chat-close', onClose);
+    };
+  }, []);
+
   const fetchWhatsAppSettings = async () => {
     try {
-      const settingsSnap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
+      const settingsSnap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 120000);
       
       if (settingsSnap.exists()) {
         const data = settingsSnap.data();
+        // Only set URL if admin has provided one
         if (data.whatsappChannelUrl) {
           setWhatsappUrl(data.whatsappChannelUrl);
         }
-        if (data.whatsappChannelEnabled !== undefined) {
-          setEnabled(data.whatsappChannelEnabled);
+        // Only enable if admin explicitly enabled AND URL exists
+        if (data.whatsappChannelEnabled === true && data.whatsappChannelUrl) {
+          setEnabled(true);
         }
       }
     } catch (error) {
@@ -32,44 +47,41 @@ export default function WhatsAppButton() {
     }
   };
 
+  // Don't render anything if disabled or no URL
   if (!enabled || !whatsappUrl) {
     return null;
   }
 
-  const handleClick = () => {
+  const handleClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (
-    <button
-      onClick={handleClick}
-      className="fixed left-6 bottom-6 z-50 group"
-      aria-label="Join WhatsApp Channel"
-    >
-      {/* Main WhatsApp Icon */}
-      <div className="relative">
-        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-2xl shadow-green-500/50 hover:shadow-green-500/70 transition-all duration-300 hover:scale-110 cursor-pointer">
-          <FaWhatsapp className="text-3xl text-white" />
-        </div>
+    <div className={`fixed right-4 sm:left-6 bottom-24 sm:bottom-6 z-50 ${chatOpen ? 'hidden sm:block' : ''}`}>
+      {/* Simple clean button - no overlapping elements */}
+      <button
+        onClick={handleClick}
+        className="relative w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-2xl shadow-green-500/30 hover:shadow-green-500/50 hover:scale-110 active:scale-95 transition-all duration-300 group"
+        aria-label="Join WhatsApp Channel"
+      >
+        {/* WhatsApp Icon */}
+        <FaWhatsapp className="text-2xl sm:text-3xl text-white relative z-10" />
         
-        {/* Pulse Animation */}
-        <div className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-20"></div>
+        {/* Pulse effect (purely visual, non-interactive) */}
+        <span className="absolute inset-0 rounded-full bg-green-400 opacity-0 group-hover:opacity-20 group-hover:scale-150 transition-all duration-700 pointer-events-none"></span>
         
-        {/* Notification Badge */}
-        <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
-          <span className="text-white text-xs font-bold">1</span>
-        </div>
-      </div>
-
-      {/* Hover Tooltip */}
-      <div className="absolute left-full ml-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-        <div className="bg-gray-900 dark:bg-gray-800 text-white px-4 py-2 rounded-xl shadow-2xl whitespace-nowrap border border-gray-700">
-          <p className="font-bold text-sm">📢 Join Our Channel</p>
-          <p className="text-xs text-gray-300">Get latest updates!</p>
-        </div>
-        {/* Arrow */}
-        <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900 dark:border-r-gray-800"></div>
-      </div>
-    </button>
+        {/* Simple tooltip on hover */}
+        <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap pointer-events-none hidden sm:block">
+          Join Our WhatsApp Channel
+        </span>
+        
+        {/* Mobile tooltip (right side) */}
+        <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap pointer-events-none sm:hidden">
+          Join Channel
+        </span>
+      </button>
+    </div>
   );
 }

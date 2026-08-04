@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { FiMail, FiLock, FiEye, FiEyeOff, FiArrowLeft, FiAlertCircle, FiCheckCircle, FiShield } from 'react-icons/fi';
+import { FiMail, FiLock, FiEye, FiEyeOff, FiArrowLeft, FiAlertCircle, FiCheckCircle, FiShield, FiMinusCircle } from 'react-icons/fi';
 import { FcGoogle } from 'react-icons/fc';
 import toast from 'react-hot-toast';
 import { Spinner } from '@/components/common/Loader';
 import MathCaptcha from '@/components/common/MathCaptcha';
+import TwoFactorVerification from '@/components/common/TwoFactorVerification';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -28,25 +29,32 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showRegistrationNotice, setShowRegistrationNotice] = useState(false);
+  const [showExpiredNotice, setShowExpiredNotice] = useState(false);
   
   // 2FA states
   const [show2FA, setShow2FA] = useState(false);
-  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [tempUserId, setTempUserId] = useState(null);
-  const [twoFactorSecret, setTwoFactorSecret] = useState('');
   
   const [captchaVerified, setCaptchaVerified] = useState(false);
   
   const { signInWithGoogle, authLoading } = useAuth();
   const router = useRouter();
 
-  // Verify TOTP code
-  const verifyTOTP = (token, secret) => {
-    if (token.length === 6 && /^\d+$/.test(token)) {
-      return true;
+  // Check if user just registered
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('registered') === 'true') {
+      setShowRegistrationNotice(true);
+      toast.success(
+        '🎉 Registration successful! Please check your inbox and spam folder for the verification email.',
+        { duration: 8000 }
+      );
     }
-    return false;
-  };
+    if (params.get('expired') === 'true') {
+      setShowExpiredNotice(true);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -78,11 +86,9 @@ function LoginPage() {
         return;
       }
 
-      // Clear app 2FA verification on new login (keep Cloudflare verification)
+      // Clear app 2FA verification on new login (sessionStorage only)
       sessionStorage.removeItem('app_2fa_verified');
       sessionStorage.removeItem('app_2fa_verified_at');
-      localStorage.removeItem('app_2fa_verified');
-      localStorage.removeItem('app_2fa_verified_at');
 
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       const userData = userDoc.data();
@@ -90,16 +96,13 @@ function LoginPage() {
       if (userData.twoFactorEnabled && userData.twoFactorSecret) {
         setShow2FA(true);
         setTempUserId(user.uid);
-        setTwoFactorSecret(userData.twoFactorSecret);
         setLoading(false);
         toast.success('Please enter your 2FA code');
       } else {
-        // No 2FA required, mark as complete in BOTH storages
+        // No 2FA required, mark as complete in sessionStorage ONLY
         const timestamp = Date.now().toString();
         sessionStorage.setItem('app_2fa_verified', 'true');
         sessionStorage.setItem('app_2fa_verified_at', timestamp);
-        localStorage.setItem('app_2fa_verified', 'true');
-        localStorage.setItem('app_2fa_verified_at', timestamp);
         toast.success('Welcome back!');
         router.push('/dashboard');
       }
@@ -126,43 +129,6 @@ function LoginPage() {
     }
   };
 
-  const handleVerify2FA = async (e) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!twoFactorCode || twoFactorCode.length !== 6) {
-      setError('Please enter a valid 6-digit code');
-      toast.error('Please enter a valid 6-digit code');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const isValid = verifyTOTP(twoFactorCode, twoFactorSecret);
-
-      if (!isValid) {
-        setError('Invalid 2FA code. Please try again.');
-        toast.error('Invalid 2FA code');
-        setLoading(false);
-        return;
-      }
-
-      // Mark app 2FA as verified in BOTH storages
-      const timestamp = Date.now().toString();
-      sessionStorage.setItem('app_2fa_verified', 'true');
-      sessionStorage.setItem('app_2fa_verified_at', timestamp);
-      localStorage.setItem('app_2fa_verified', 'true');
-      localStorage.setItem('app_2fa_verified_at', timestamp);
-      toast.success('2FA verified! Welcome back!');
-      router.push('/dashboard');
-    } catch (err) {
-      setLoading(false);
-      setError('Failed to verify 2FA code');
-      toast.error('Failed to verify 2FA code');
-    }
-  };
-
   const handleGoogleSignIn = async () => {
     setError(null);
 
@@ -172,11 +138,9 @@ function LoginPage() {
       return;
     }
 
-    // Clear app 2FA verification on new login (keep Cloudflare verification)
+    // Clear app 2FA verification on new login (sessionStorage only)
     sessionStorage.removeItem('app_2fa_verified');
     sessionStorage.removeItem('app_2fa_verified_at');
-    localStorage.removeItem('app_2fa_verified');
-    localStorage.removeItem('app_2fa_verified_at');
 
     const { success, error: googleError } = await signInWithGoogle();
     if (success) {
@@ -195,26 +159,21 @@ function LoginPage() {
           // User has 2FA enabled, show 2FA prompt
           setShow2FA(true);
           setTempUserId(currentUser.uid);
-          setTwoFactorSecret(userData.twoFactorSecret);
           toast.success('Please enter your 2FA code');
         } else {
-          // No 2FA required for this user in BOTH storages
+          // No 2FA required for this user - sessionStorage ONLY
           const timestamp = Date.now().toString();
           sessionStorage.setItem('app_2fa_verified', 'true');
           sessionStorage.setItem('app_2fa_verified_at', timestamp);
-          localStorage.setItem('app_2fa_verified', 'true');
-          localStorage.setItem('app_2fa_verified_at', timestamp);
           toast.success('Welcome back!');
           router.push('/dashboard');
         }
       } catch (err) {
         console.error('Error checking 2FA status:', err);
-        // If error checking 2FA, allow login (fallback) in BOTH storages
+        // If error checking 2FA, allow login (fallback) - sessionStorage ONLY
         const timestamp = Date.now().toString();
         sessionStorage.setItem('app_2fa_verified', 'true');
         sessionStorage.setItem('app_2fa_verified_at', timestamp);
-        localStorage.setItem('app_2fa_verified', 'true');
-        localStorage.setItem('app_2fa_verified_at', timestamp);
         toast.success('Welcome back!');
         router.push('/dashboard');
       }
@@ -224,80 +183,21 @@ function LoginPage() {
     }
   };
 
-  // 2FA Modal View
+  // 2FA View
   if (show2FA) {
     return (
-      <div className="min-h-screen flex items-center justify-center py-12 px-4 relative">
-        <div className="relative w-full max-w-md">
-          <div className="glass-card p-8">
-            <div className="text-center mb-8">
-              <div className="w-20 h-20 rounded-3xl gradient-bg flex items-center justify-center mx-auto mb-4">
-                <FiShield className="text-4xl text-white" />
-              </div>
-              <h1 className="text-3xl font-bold text-dark-900 dark:text-white mb-2">
-                Two-Factor Authentication
-              </h1>
-              <p className="text-dark-500 dark:text-dark-400">
-                Enter the 6-digit code from your authenticator app
-              </p>
-            </div>
-
-            {error && (
-              <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 flex items-start gap-2 sm:gap-3">
-                <FiAlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5 text-lg sm:text-xl" />
-                <p className="text-sm text-red-700 dark:text-red-200">{error}</p>
-              </div>
-            )}
-
-            <form onSubmit={handleVerify2FA} className="space-y-4 sm:space-y-5">
-              <div>
-                <label className="input-label text-sm sm:text-base">Verification Code</label>
-                <input
-                  type="text"
-                  placeholder="000000"
-                  value={twoFactorCode}
-                  onChange={(e) => {
-                    setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6));
-                    setError(null);
-                  }}
-                  className="input-field text-center text-xl sm:text-2xl font-mono tracking-widest py-3 sm:py-4"
-                  maxLength={6}
-                  required
-                  disabled={loading}
-                  autoFocus
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || twoFactorCode.length !== 6}
-                className="btn-primary w-full btn-lg disabled:opacity-50"
-              >
-                {loading ? <Spinner size="sm" /> : 'Verify & Sign In'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShow2FA(false);
-                  setTwoFactorCode('');
-                  setError(null);
-                }}
-                className="w-full text-xs sm:text-sm text-dark-500 dark:text-dark-400 hover:text-dark-700 dark:hover:text-dark-300 py-2"
-              >
-                Back to Login
-              </button>
-            </form>
-
-            <div className="mt-4 sm:mt-6 p-3 sm:p-4 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20">
-              <p className="text-[10px] sm:text-xs text-blue-800 dark:text-blue-300">
-                <strong>Can't access your authenticator?</strong><br />
-                Use one of your backup codes or contact support for help.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <TwoFactorVerification
+        userId={tempUserId}
+        onSuccess={() => {
+          setShow2FA(false);
+          router.push('/dashboard');
+        }}
+        onBack={() => {
+          setShow2FA(false);
+          setTempUserId(null);
+          setError(null);
+        }}
+      />
     );
   }
 
@@ -313,6 +213,55 @@ function LoginPage() {
         </Link>
 
         <div className="glass-card p-4 sm:p-8">
+          {/* Session Expired Notice */}
+          {showExpiredNotice && (
+            <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border-2 border-amber-500 dark:border-amber-500/50">
+              <div className="flex items-start gap-3">
+                <FiAlertCircle className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5 text-2xl" />
+                <div className="flex-1">
+                  <h3 className="font-bold text-amber-800 dark:text-amber-200 mb-1">
+                    ⏰ Session Expired
+                  </h3>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Your session expired for security reasons (3-day auto logout). Please sign in again.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowExpiredNotice(false)}
+                  className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200"
+                >
+                  <FiMinusCircle className="text-xl" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Registration Success Notice */}
+          {showRegistrationNotice && (
+            <div className="mb-6 p-4 rounded-xl bg-green-50 dark:bg-green-500/10 border-2 border-green-500 dark:border-green-500/50 animate-pulse">
+              <div className="flex items-start gap-3">
+                <FiCheckCircle className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5 text-2xl" />
+                <div className="flex-1">
+                  <h3 className="font-bold text-green-800 dark:text-green-200 mb-1">
+                    ✅ Registration Successful!
+                  </h3>
+                  <p className="text-sm text-green-700 dark:text-green-300 mb-2">
+                    Please verify your email before logging in. Check your <strong>inbox and spam folder</strong>.
+                  </p>
+                  <p className="text-xs text-green-600 dark:text-green-400">
+                    📧 Can't find the email? Check your spam/junk folder or request a new verification email after login attempt.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowRegistrationNotice(false)}
+                  className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200"
+                >
+                  <FiMinusCircle className="text-xl" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {error ? (
             <div className="text-center mb-6 sm:mb-8">
               <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-red-100 dark:bg-red-500/20 flex items-center justify-center mx-auto mb-3 sm:mb-4">
@@ -378,15 +327,19 @@ function LoginPage() {
                     setPassword(e.target.value);
                     setError(null);
                   }}
-                  className="input-field pl-9 sm:pl-10 pr-9 sm:pr-10 text-sm sm:text-base py-2.5 sm:py-3"
+                  className="input-field pl-9 sm:pl-10 pr-12 text-sm sm:text-base py-2.5 sm:py-3"
                   required
                   disabled={loading}
+                  autoComplete="current-password"
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 text-sm sm:text-base"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-600 text-sm sm:text-base z-10"
                   disabled={loading}
+                  tabIndex="-1"
                 >
                   {showPassword ? <FiEyeOff /> : <FiEye />}
                 </button>

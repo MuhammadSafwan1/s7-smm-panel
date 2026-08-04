@@ -13,6 +13,7 @@
     "axios": "^1.7.0",
     "cloudinary": "^2.10.0",
     "firebase": "^10.14.0",
+    "firebase-admin": "^14.2.0",
     "framer-motion": "^11.11.0",
     "graceful-fs": "^4.2.11",
     "next": "^14.2.0",

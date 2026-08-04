@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs } from 'firebase/firestore';
+import { cachedQuery } from '@/lib/cache';
 import { PageLoader } from '@/components/common/Loader';
 import Link from 'next/link';
 import { FiArrowLeft, FiCreditCard, FiDollarSign, FiClock, FiZap } from 'react-icons/fi';
@@ -29,10 +30,12 @@ export default function AddFundsPage() {
 
   const fetchPaymentMethods = async () => {
     try {
-      const snap = await getDocs(collection(db, 'paymentMethods'));
-      const methods = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(m => m.isActive);
+      const methods = await cachedQuery('addFunds:paymentMethods', async () => {
+        const snap = await getDocs(collection(db, 'paymentMethods'));
+        return snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(m => m.isActive);
+      });
       setPaymentMethods(methods);
     } catch (e) {
       console.error(e);

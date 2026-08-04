@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
-import { FiX } from 'react-icons/fi';
+import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { FiXCircle } from 'react-icons/fi';
 import { useCurrency } from '@/context/CurrencyContext';
 import { useAuth } from '@/context/AuthContext';
 
@@ -26,8 +26,12 @@ export default function AnnouncementPopup() {
 
   const fetchLatestAnnouncement = async () => {
     try {
+      // 🔒 Only show last 7 days announcements (older ones are filtered out)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const q = query(
         collection(db, 'announcements'),
+        where('createdAt', '>=', sevenDaysAgo),
         orderBy('createdAt', 'desc'),
         limit(5)
       );
@@ -125,7 +129,7 @@ export default function AnnouncementPopup() {
                   className="flex-shrink-0 w-9 h-9 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2f4a72] transition-all"
                   aria-label="Close"
                 >
-                  <FiX size={16} />
+                  <FiXCircle size={16} />
                 </button>
               </div>
             </div>

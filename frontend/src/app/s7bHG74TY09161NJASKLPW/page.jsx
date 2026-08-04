@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, limit, Timestamp, getCountFromServer } from 'firebase/firestore';
 import { useCurrency } from '@/context/CurrencyContext';
 import {
   FiUsers, FiShoppingBag, FiPackage, FiGrid,
@@ -98,80 +98,83 @@ export default function AdminDashboard() {
     setError(null);
     
     try {
+      console.log('📊 Fetching admin dashboard data...');
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayTimestamp = Timestamp.fromDate(today);
 
-      console.log('📊 Fetching dashboard data...');
+      // Helper function with retry logic for count queries
+      const getCountWithRetry = async (queryRef, retries = 2) => {
+        for (let i = 0; i < retries; i++) {
+          try {
+            const snapshot = await getCountFromServer(queryRef);
+            return snapshot.data().count;
+          } catch (err) {
+            console.warn(`⚠️ Count query failed (attempt ${i + 1}/${retries}):`, err.message);
+            if (i === retries - 1) return 0; // Last attempt failed, return 0
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+          }
+        }
+        return 0;
+      };
 
+      // Use individual cache keys for better granularity
       const [
-        usersSnapshot, ordersSnapshot, servicesSnapshot,
-        categoriesSnapshot, platformsSnapshot, providersSnapshot,
-        todayOrdersSnapshot, todayUsersSnapshot,
-        recentOrdersSnapshot, recentUsersSnapshot,
+        totalUsers, totalOrders, totalServices,
+        totalCategories, totalPlatforms, totalProviders,
+        onlineCount,
+        todayOrders, todayUsers,
+        recentOrdersData, recentUsersData,
+        balanceData,
       ] = await Promise.all([
-        cachedQuery('collection:users', () => getDocs(collection(db, 'users')), 30000),
-        cachedQuery('collection:orders', () => getDocs(collection(db, 'orders')), 30000),
-        cachedQuery('collection:services', () => getDocs(collection(db, 'services')), 30000),
-        cachedQuery('collection:categories', () => getDocs(collection(db, 'categories')), 30000),
-        cachedQuery('collection:platforms', () => getDocs(collection(db, 'platforms')), 30000),
-        cachedQuery('collection:providers', () => getDocs(collection(db, 'providers')), 30000),
-        getDocs(query(collection(db, 'orders'), where('createdAt', '>=', todayTimestamp))),
-        getDocs(query(collection(db, 'users'),  where('createdAt', '>=', todayTimestamp))),
-        getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(5))),
-        getDocs(query(collection(db, 'users'),  orderBy('createdAt', 'desc'), limit(10))), // Fetch 10 users to filter
+        getCountWithRetry(collection(db, 'users')),
+        getCountWithRetry(collection(db, 'orders')),
+        getCountWithRetry(collection(db, 'services')),
+        getCountWithRetry(collection(db, 'categories')),
+        getCountWithRetry(collection(db, 'platforms')),
+        getCountWithRetry(collection(db, 'providers')),
+        getCountWithRetry(query(collection(db, 'users'), where('lastSeen', '>=', new Date(Date.now() - 10 * 60 * 1000)))),
+        getCountWithRetry(query(collection(db, 'orders'), where('createdAt', '>=', todayTimestamp))),
+        getCountWithRetry(query(collection(db, 'users'), where('createdAt', '>=', todayTimestamp))),
+        cachedQuery('admin:recentOrders', () => 
+          getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(5)))
+            .then(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })))
+            .catch(err => { console.error('Failed to fetch recent orders:', err); return []; })
+        , 60000), // Cache for 1 minute
+        cachedQuery('admin:recentUsers', () =>
+          getDocs(query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(10)))
+            .then(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => !u.banned && !u.disabled).slice(0, 5))
+            .catch(err => { console.error('Failed to fetch recent users:', err); return []; })
+        , 60000), // Cache for 1 minute
+        cachedQuery('admin:balances', () => 
+          getDocs(collection(db, 'users')).then(snap => {
+            let totalBalance = 0, totalSpent = 0;
+            snap.forEach(doc => {
+              const d = doc.data();
+              totalBalance += d.walletBalance || 0;
+              totalSpent += d.totalSpent || 0;
+            });
+            return { totalBalance, totalSpent };
+          }).catch(err => { console.error('Failed to fetch balances:', err); return { totalBalance: 0, totalSpent: 0 }; })
+        , 60000), // Cache for 1 minute
       ]);
 
-      console.log('✅ Data fetched successfully');
+      const statsData = { 
+        totalUsers, totalOrders, totalServices, totalCategories, totalPlatforms, totalProviders, 
+        onlineUsers: onlineCount, todayOrders, todayUsers, 
+        totalBalance: balanceData.totalBalance, 
+        totalSpent: balanceData.totalSpent 
+      };
 
-      let totalBalance = 0;
-      let totalSpent   = 0;
-      usersSnapshot.forEach(doc => {
-        const d = doc.data();
-        totalBalance += d.walletBalance || 0;
-        totalSpent   += d.totalSpent || 0;
-      });
-
-      const fiveMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      let onlineUsers = 0;
-      usersSnapshot.forEach(doc => {
-        const d = doc.data();
-        // Check lastSeen field (updated by AuthContext every 10 minutes)
-        const lastSeen = d.lastSeen?.toDate?.() || (d.lastSeen?.seconds ? new Date(d.lastSeen.seconds * 1000) : null);
-        if (lastSeen && lastSeen > fiveMinutesAgo) {
-          onlineUsers++;
-        }
-      });
-      
-      console.log('👥 Online users:', onlineUsers, 'out of', usersSnapshot.size);
-
-      setStats({
-        totalUsers:      usersSnapshot.size,
-        onlineUsers,
-        totalOrders:     ordersSnapshot.size,
-        totalServices:   servicesSnapshot.size,
-        totalCategories: categoriesSnapshot.size,
-        totalPlatforms:  platformsSnapshot.size,
-        totalProviders:  providersSnapshot.size,
-        totalBalance,
-        totalSpent,
-        todayOrders: todayOrdersSnapshot.size,
-        todayUsers:  todayUsersSnapshot.size,
-      });
-
-      setRecentOrders(recentOrdersSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-      
-      // Filter out banned and deleted users from recent users
-      const filteredUsers = recentUsersSnapshot.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(user => !user.banned && !user.disabled) // Exclude banned users
-        .slice(0, 5); // Take only top 5 after filtering
-      
-      setRecentUsers(filteredUsers);
-      setLoading(false);
+      setStats(statsData);
+      setRecentOrders(recentOrdersData);
+      setRecentUsers(recentUsersData);
+      console.log('✅ Admin dashboard loaded');
     } catch (error) {
       console.error('❌ Error fetching dashboard data:', error);
       setError(error.message || 'Failed to load dashboard data');
+    } finally {
       setLoading(false);
     }
   };

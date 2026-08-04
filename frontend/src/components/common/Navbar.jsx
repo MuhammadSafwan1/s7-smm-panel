@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { FiMenu, FiX, FiUser, FiLogOut, FiSun, FiMoon, FiPackage, FiSettings, FiCode } from 'react-icons/fi';
+import { FiMenu, FiXCircle, FiLogOut, FiSun, FiMoon, FiPackage, FiSettings, FiCode } from 'react-icons/fi';
 import { logout } from '@/firebase/auth';
 import { db } from '@/firebase/firestore';
 import { doc, getDoc } from 'firebase/firestore';
@@ -59,11 +59,9 @@ export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [isVerified, setIsVerified] = useState(false);
-  const [isApp2FAVerified, setIsApp2FAVerified] = useState(false);
   const [siteLogo, setSiteLogo] = useState('');
   const pathname = usePathname();
-  const { user, userProfile, isAdmin } = useAuth();
+  const { user, userProfile, isAdmin, is2FAVerified } = useAuth(); // 🔒 Get 2FA verified state
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -82,76 +80,30 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Check verification status
-  useEffect(() => {
-    const checkVerification = () => {
-      const verified = localStorage.getItem('cf_verified') || sessionStorage.getItem('cf_verified');
-      const verifiedAt = localStorage.getItem('cf_verified_at') || sessionStorage.getItem('cf_verified_at');
-      
-      if (verified === 'true' && verifiedAt) {
-        const elapsed = Date.now() - parseInt(verifiedAt);
-        if (elapsed < 30 * 60 * 1000) {
-          setIsVerified(true);
-          localStorage.setItem('cf_verified', 'true');
-          localStorage.setItem('cf_verified_at', verifiedAt);
-          sessionStorage.setItem('cf_verified', 'true');
-          sessionStorage.setItem('cf_verified_at', verifiedAt);
-        } else {
-          localStorage.removeItem('cf_verified');
-          localStorage.removeItem('cf_verified_at');
-          sessionStorage.removeItem('cf_verified');
-          sessionStorage.removeItem('cf_verified_at');
-          setIsVerified(false);
-        }
-      } else {
-        setIsVerified(false);
-      }
 
-      const app2FAVerified = localStorage.getItem('app_2fa_verified') || sessionStorage.getItem('app_2fa_verified');
-      const app2FAVerifiedAt = localStorage.getItem('app_2fa_verified_at') || sessionStorage.getItem('app_2fa_verified_at');
-      
-      if (app2FAVerified === 'true' && app2FAVerifiedAt) {
-        const elapsed = Date.now() - parseInt(app2FAVerifiedAt);
-        if (elapsed < 24 * 60 * 60 * 1000) {
-          setIsApp2FAVerified(true);
-          localStorage.setItem('app_2fa_verified', 'true');
-          localStorage.setItem('app_2fa_verified_at', app2FAVerifiedAt);
-          sessionStorage.setItem('app_2fa_verified', 'true');
-          sessionStorage.setItem('app_2fa_verified_at', app2FAVerifiedAt);
-        } else {
-          localStorage.removeItem('app_2fa_verified');
-          localStorage.removeItem('app_2fa_verified_at');
-          sessionStorage.removeItem('app_2fa_verified');
-          sessionStorage.removeItem('app_2fa_verified_at');
-          setIsApp2FAVerified(false);
-        }
-      } else {
-        setIsApp2FAVerified(false);
-      }
-    };
-
-    checkVerification();
-    
-    const handleStorageChange = () => {
-      checkVerification();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    const interval = setInterval(checkVerification, 500);
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, [pathname]);
 
   const fetchSiteLogo = async () => {
     try {
+      // Use sessionStorage (clears on tab close automatically)
+      const cachedData = sessionStorage.getItem('siteLogo_cache');
+      if (cachedData) {
+        const { logo } = JSON.parse(cachedData);
+        console.log('📦 Using cached site logo from sessionStorage');
+        setSiteLogo(logo);
+        updateFavicon(logo);
+        return;
+      }
+
+      // Fetch from Firestore on first load or after refresh
       const docRef = doc(db, 'siteSettings', 'general');
       const docSnap = await getDoc(docRef);
       if (docSnap.exists() && docSnap.data().siteLogo) {
-        setSiteLogo(docSnap.data().siteLogo);
-        updateFavicon(docSnap.data().siteLogo);
+        const logo = docSnap.data().siteLogo;
+        setSiteLogo(logo);
+        updateFavicon(logo);
+        // Store in sessionStorage (no expiry, clears on tab close)
+        sessionStorage.setItem('siteLogo_cache', JSON.stringify({ logo }));
+        console.log('✅ Site logo fetched and cached in sessionStorage');
       }
     } catch (error) {
       console.error('Error fetching site logo:', error);
@@ -237,7 +189,8 @@ export default function Navbar() {
               </Link>
             )}
             
-            {user && isVerified && isApp2FAVerified && (
+            {/* Only show dashboard links if user is logged in AND email is verified AND 2FA is verified */}
+            {user && user.emailVerified && is2FAVerified ? (
               <>
                 {pathname !== '/dashboard' && (
                   <Link
@@ -284,14 +237,15 @@ export default function Navbar() {
                   </Link>
                 )}
               </>
-            )}
+            ) : null}
             
+            {/* Always show Terms and Help */}
             {pathname !== '/policies' && (
               <Link
                 href="/policies"
                 className="font-bold text-xs lg:text-sm tracking-wider px-3 lg:px-4 py-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all flex items-center gap-1"
               >
-                ❓ FAQs
+                📋 TERMS
               </Link>
             )}
             
@@ -305,19 +259,19 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Right section - ALWAYS SHOW user, bell, currency on all screens */}
+          {/* Right section - Show based on 2FA verification status */}
           <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
-            {/* Currency Switcher - Show on mobile too */}
-            {user && isVerified && isApp2FAVerified && (
+            {/* Currency Switcher - Show only for 2FA verified users */}
+            {user && user.emailVerified && is2FAVerified && (
               <CurrencySwitcher />
             )}
 
-            {/* Announcement Bell - Show on mobile too */}
-            {user && isVerified && isApp2FAVerified && (
+            {/* Announcement Bell - Show only for 2FA verified users */}
+            {user && user.emailVerified && is2FAVerified && (
               <AnnouncementBell />
             )}
 
-            {/* Theme Toggle */}
+            {/* Theme Toggle - Always show */}
             <button
               onClick={toggleTheme}
               className="p-2 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
@@ -327,8 +281,8 @@ export default function Navbar() {
               {isDark ? <FiSun className="text-base sm:text-lg text-yellow-400" /> : <FiMoon className="text-base sm:text-lg text-blue-500" />}
             </button>
 
-            {/* User Profile - Show on mobile too */}
-            {user ? (
+            {/* User Profile - Show only for 2FA verified users */}
+            {user && is2FAVerified ? (
               <div className="relative">
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -369,7 +323,7 @@ export default function Navbar() {
                           className="p-2 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all shadow-sm"
                           aria-label="Close menu"
                         >
-                          <FiX className="text-lg text-dark-600 dark:text-dark-300" />
+                          <FiXCircle className="text-lg text-dark-600 dark:text-dark-300" />
                         </button>
                       </div>
                       
@@ -431,22 +385,24 @@ export default function Navbar() {
                   </>
                 )}
               </div>
-            ) : !pathname.startsWith('/admin') ? (
-              <div className="flex items-center gap-2">
-                <Link href="/auth/login" className="btn-secondary btn-xs md:btn-sm">
-                  Login
-                </Link>
-                <Link href="/auth/register" className="btn-primary btn-xs md:btn-sm">
-                  Register
-                </Link>
-              </div>
+            ) : !user || !is2FAVerified ? (
+              !pathname.startsWith('/admin') ? (
+                <div className="flex items-center gap-2">
+                  <Link href="/auth/login" className="btn-secondary btn-xs md:btn-sm">
+                    Login
+                  </Link>
+                  <Link href="/auth/register" className="btn-primary btn-xs md:btn-sm">
+                    Register
+                  </Link>
+                </div>
+              ) : null
             ) : null}
 
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="md:hidden p-1.5 rounded-lg text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
             >
-              {isOpen ? <FiX className="text-base" /> : <FiMenu className="text-base" />}
+              {isOpen ? <FiXCircle className="text-base" /> : <FiMenu className="text-base" />}
             </button>
           </div>
         </div>
@@ -463,7 +419,7 @@ export default function Navbar() {
                 className="p-2 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all"
                 aria-label="Close menu"
               >
-                <FiX className="text-lg text-dark-600 dark:text-dark-300" />
+                <FiXCircle className="text-lg text-dark-600 dark:text-dark-300" />
               </button>
             </div>
             <Link
@@ -473,47 +429,55 @@ export default function Navbar() {
             >
               🏠 HOME
             </Link>
-            <Link
-              href="/dashboard"
-              className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-              onClick={() => setIsOpen(false)}
-            >
-              📊 DASHBOARD
-            </Link>
-            <Link
-              href="/dashboard/add-funds"
-              className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-              onClick={() => setIsOpen(false)}
-            >
-              💰 ADD FUNDS
-            </Link>
-            <Link
-              href="/dashboard/orders"
-              className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-              onClick={() => setIsOpen(false)}
-            >
-              📦 ORDERS
-            </Link>
-            <Link
-              href="/dashboard/services"
-              className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-              onClick={() => setIsOpen(false)}
-            >
-              ⚡ SERVICES
-            </Link>
-            <Link
-              href="/dashboard/transactions"
-              className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
-              onClick={() => setIsOpen(false)}
-            >
-              💳 TRANSACTIONS
-            </Link>
+            
+            {/* Only show dashboard links if user is logged in AND email is verified AND 2FA is verified */}
+            {user && user.emailVerified && is2FAVerified && (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                  onClick={() => setIsOpen(false)}
+                >
+                  📊 DASHBOARD
+                </Link>
+                <Link
+                  href="/dashboard/add-funds"
+                  className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                  onClick={() => setIsOpen(false)}
+                >
+                  💰 ADD FUNDS
+                </Link>
+                <Link
+                  href="/dashboard/orders"
+                  className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                  onClick={() => setIsOpen(false)}
+                >
+                  📦 ORDERS
+                </Link>
+                <Link
+                  href="/dashboard/services"
+                  className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                  onClick={() => setIsOpen(false)}
+                >
+                  ⚡ SERVICES
+                </Link>
+                <Link
+                  href="/dashboard/transactions"
+                  className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
+                  onClick={() => setIsOpen(false)}
+                >
+                  💳 TRANSACTIONS
+                </Link>
+              </>
+            )}
+            
+            {/* Always show Terms and Help */}
             <Link
               href="/policies"
               className="block px-4 py-3 rounded-xl font-semibold text-dark-600 dark:text-dark-300 hover:bg-dark-100 dark:hover:bg-dark-800 transition-all"
               onClick={() => setIsOpen(false)}
             >
-              ❓ FAQs
+              📋 TERMS
             </Link>
             <Link
               href="/help"
@@ -524,7 +488,7 @@ export default function Navbar() {
             </Link>
 
             <div className="border-t border-dark-200 dark:border-dark-700 pt-2 mt-2">
-              {user ? (
+              {user && is2FAVerified ? (
                 <>
                   <div className="px-4 py-3 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white font-bold">
@@ -542,23 +506,25 @@ export default function Navbar() {
                     Logout
                   </button>
                 </>
-              ) : !pathname.startsWith('/admin') ? (
-                <div className="flex gap-2 sm:gap-3 px-4 py-3">
-                  <Link
-                    href="/auth/login"
-                    className="flex-1 btn-secondary btn-xs sm:btn-sm text-center"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Login
-                  </Link>
-                  <Link
-                    href="/auth/register"
-                    className="flex-1 btn-primary btn-xs sm:btn-sm text-center"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Register
-                  </Link>
-                </div>
+              ) : !user || !is2FAVerified ? (
+                !pathname.startsWith('/admin') ? (
+                  <div className="flex gap-2 sm:gap-3 px-4 py-3">
+                    <Link
+                      href="/auth/login"
+                      className="flex-1 btn-secondary btn-xs sm:btn-sm text-center"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Login
+                    </Link>
+                    <Link
+                      href="/auth/register"
+                      className="flex-1 btn-primary btn-xs sm:btn-sm text-center"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Register
+                    </Link>
+                  </div>
+                ) : null
               ) : null}
             </div>
           </div>

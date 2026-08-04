@@ -4,12 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiImage, FiUpload, FiX, FiLink, FiTool } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiImage, FiUpload, FiXCircle, FiLink, FiTool, FiCloud } from 'react-icons/fi';
 import { cachedQuery, invalidateCache } from '@/lib/cache';
+import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
 
 function IconUpload({ value, onChange }) {
   const inputRef = useRef();
-  const [mode, setMode] = useState('upload'); // 'upload' | 'url'
+  const [mode, setMode] = useState('cloud'); // 'cloud' | 'base64' | 'url'
   const [urlInput, setUrlInput] = useState('');
   const [converting, setConverting] = useState(false);
 
@@ -61,30 +62,28 @@ function IconUpload({ value, onChange }) {
 
     setConverting(true);
     try {
-      // GIFs: keep as-is (base64 without canvas compression to preserve animation)
-      if (file.type === 'image/gif') {
-        const reader = new FileReader();
-        reader.onload = () => {
-          onChange(reader.result);
-          toast.success('GIF icon ready!');
-          setConverting(false);
-        };
-        reader.onerror = () => {
-          toast.error('Failed to read GIF');
-          setConverting(false);
-        };
-        reader.readAsDataURL(file);
-        return;
+      if (mode === 'cloud') {
+        // Compress (keep GIF animation) then upload to Cloudinary → ZERO Firebase bandwidth
+        const payload = file.type === 'image/gif' ? await toBase64(file) : await compressAndConvert(file);
+        const { url, error } = await uploadToCloudinary(payload, 'smm-panel/icons');
+        if (url) {
+          onChange(url);
+          toast.success('☁️ Icon uploaded to Cloudinary!');
+        } else {
+          // Fallback: keep as base64 so the admin never loses the icon
+          onChange(payload);
+          toast.error(`Cloudinary failed (${error || 'upload error'}) — saved as base64`);
+        }
+      } else {
+        // Base64 mode: keep as-is (GIF) or compress
+        const base64 = file.type === 'image/gif' ? await toBase64(file) : await compressAndConvert(file);
+        onChange(base64);
+        toast.success('Icon saved (base64)');
       }
-
-      // All other images: compress to 256x256
-      const base64 = await compressAndConvert(file);
-      onChange(base64);
-      toast.success('Icon ready!');
     } catch (err) {
       toast.error('Failed to process image');
     } finally {
-      if (file.type !== 'image/gif') setConverting(false);
+      setConverting(false);
       e.target.value = '';
     }
   };
@@ -102,14 +101,25 @@ function IconUpload({ value, onChange }) {
       <div className="flex gap-2">
         <button
           type="button"
-          onClick={() => setMode('upload')}
+          onClick={() => setMode('cloud')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            mode === 'upload'
+            mode === 'cloud'
+              ? 'bg-sky-500 text-white shadow-md'
+              : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'
+          }`}
+        >
+          <FiCloud /> Cloudinary
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('base64')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            mode === 'base64'
               ? 'bg-primary-500 text-white shadow-md'
               : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'
           }`}
         >
-          <FiUpload /> Upload File
+          <FiUpload /> Base64
         </button>
         <button
           type="button"
@@ -125,10 +135,17 @@ function IconUpload({ value, onChange }) {
       </div>
 
       {/* Upload mode info */}
-      {mode === 'upload' && !value && (
+      {mode === 'cloud' && !value && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-sky-900/30 border border-sky-700/40 text-sky-400 text-sm">
+          <FiCloud className="flex-shrink-0" />
+          <span>Upload to Cloudinary — free CDN, uses ZERO Firebase bandwidth</span>
+        </div>
+      )}
+
+      {mode === 'base64' && !value && (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-900/30 border border-green-700/40 text-green-400 text-sm">
           <FiUpload className="flex-shrink-0" />
-          <span>Select image from your device (converted to base64, no external service needed)</span>
+          <span>Select image from your device (converted to base64, stored in Firestore)</span>
         </div>
       )}
 
@@ -165,7 +182,7 @@ function IconUpload({ value, onChange }) {
           <div className="flex-1">
             <p className="text-sm font-semibold text-green-700 dark:text-green-400">✓ Icon ready</p>
             <p className="text-xs text-dark-400 mt-0.5">
-              {value.startsWith('data:') ? 'Base64 encoded (no external service)' : 'URL image'}
+              {value.startsWith('data:') ? 'Base64 encoded (Firestore)' : value.includes('cloudinary') ? '☁️ Cloudinary (off Firebase)' : 'URL image'}
             </p>
           </div>
           <button
@@ -173,10 +190,10 @@ function IconUpload({ value, onChange }) {
             onClick={() => onChange('')}
             className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
           >
-            <FiX />
+            <FiXCircle />
           </button>
         </div>
-      ) : mode === 'upload' ? (
+      ) : mode !== 'url' ? (
         <>
           <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
           <button
@@ -274,6 +291,8 @@ export default function PlatformsPage() {
       }
       closeModal();
       fetchPlatforms();
+      invalidateCache('platforms:all');
+      invalidateCache('collection:platforms');
     } catch (err) {
       toast.error(err.message || 'Failed to save');
     } finally {
@@ -291,11 +310,15 @@ export default function PlatformsPage() {
     await deleteDoc(doc(db, 'platforms', id));
     toast.success('Platform deleted');
     fetchPlatforms();
+    invalidateCache('platforms:all');
+    invalidateCache('collection:platforms');
   };
 
   const toggleActive = async (p) => {
     await updateDoc(doc(db, 'platforms', p.id), { isActive: !p.isActive, updatedAt: Timestamp.now() });
     fetchPlatforms();
+    invalidateCache('platforms:all');
+    invalidateCache('collection:platforms');
   };
 
   return (

@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiFilter, FiChevronDown, FiChevronRight, FiSearch } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiFilter, FiChevronDown, FiChevronRight, FiSearch, FiXCircle, FiRefreshCw } from 'react-icons/fi';
 import { uploadFile } from '@/firebase/storage';
 import { useCurrency } from '@/context/CurrencyContext';
-import { invalidateCache } from '@/lib/cache';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
+import { updateServiceLive, removeServiceLive, bumpFullRefresh } from '@/lib/liveSync';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 const USE_DIRECT_API = true;
@@ -23,6 +25,7 @@ const EMPTY_FORM = {
   avgTime: '1-6 Hours', description: '',
   customCommentsRequired: false,
   isActive: true, isFeatured: false, isPopular: false,
+  isBestSeller: false, isTrending: false, isTopRated: false, isSale: false, isPremium: false, isVIP: false,
   refillSupported: false, refillPeriodDays: '', cancelSupported: false, refundSupported: false,
   maintenance: false,
 };
@@ -87,7 +90,9 @@ function ProviderBrowseModal({ provider, onSelect, onClose }) {
         data = result;
       }
 
-      if (Array.isArray(data)) { setList(data); }
+      if (Array.isArray(data)) {
+        setList(data);
+      }
       else if (data?.error) { throw new Error(`Provider error: ${data.error}`); }
       else { throw new Error('Provider returned invalid response format'); }
     } catch (e) {
@@ -197,22 +202,38 @@ export default function ServicesPage() {
   const [showBrowse, setShowBrowse] = useState(false);
   const [editingService, setEditingService] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [filterPlatform, setFilterPlatform] = useState('all');
-  const [filterCategory, setFilterCategory] = useState('all');
+  const [filterPlatform, setFilterPlatform] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
   const [expanded, setExpanded] = useState({});
   const [form, setForm] = useState(EMPTY_FORM);
   const [servicesDisplayLimit, setServicesDisplayLimit] = useState({});
   const SERVICES_PER_LOAD = 20;
+  
+  // Service ID Search states
+  const [serviceIdSearch, setServiceIdSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   useEffect(() => { fetchData(); }, []);
+
+  // Support ?edit=<docId> from Service Monitor: open the edit modal directly
+  const searchParams = useSearchParams();
+  const editId = searchParams.get('edit');
+  const editOpenedRef = useRef(false);
+  useEffect(() => {
+    if (editId && services.length > 0 && !editOpenedRef.current) {
+      const target = services.find(s => s.id === editId);
+      if (target) { openEdit(target); editOpenedRef.current = true; }
+    }
+  }, [editId, services]);
 
   const fetchData = async () => {
     try {
       const [sS, pS, cS, prS] = await Promise.all([
-        getDocs(collection(db, 'services')),
-        getDocs(collection(db, 'platforms')),
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'providers')),
+        cachedQuery('collection:services', () => getDocs(collection(db, 'services'))),
+        cachedQuery('collection:platforms', () => getDocs(collection(db, 'platforms'))),
+        cachedQuery('collection:categories', () => getDocs(collection(db, 'categories'))),
+        cachedQuery('collection:providers', () => getDocs(collection(db, 'providers'))),
       ]);
       setServices(sS.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => {
         const idA = parseInt(a.serviceId) || 0;
@@ -220,12 +241,52 @@ export default function ServicesPage() {
         return idA - idB;
       }));
       const pList = pS.docs.map(d => ({ id: d.id, ...d.data() }));
+      const cList = cS.docs.map(d => ({ id: d.id, ...d.data() }));
       setPlatforms(pList);
-      setCategories(cS.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCategories(cList);
       setProviders(prS.docs.map(d => ({ id: d.id, ...d.data() })));
+      
+      // 🚀 Set first platform and its first category as default
+      if (pList.length > 0) {
+        const firstPlatformId = pList[0].id;
+        setFilterPlatform(firstPlatformId);
+        
+        // Find first category of first platform
+        const firstCategory = cList.find(c => c.platformId === firstPlatformId);
+        if (firstCategory) {
+          setFilterCategory(firstCategory.id);
+        }
+      }
+      
       const exp = {}; pList.forEach(p => { exp[p.id] = true; });
       setExpanded(exp);
     } catch (e) { console.error(e); }
+  };
+
+  // Service ID Search function
+  const handleServiceIdSearch = (searchTerm) => {
+    setServiceIdSearch(searchTerm);
+    
+    if (!searchTerm.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+    
+    const results = services.filter(service => 
+      service.serviceId && 
+      service.serviceId.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    
+    setSearchResults(results);
+    setShowSearchResults(true);
+  };
+
+  // Quick edit service from search
+  const quickEditService = (service) => {
+    openEdit(service);
+    setServiceIdSearch('');
+    setShowSearchResults(false);
   };
 
   const handleSave = async (e) => {
@@ -270,6 +331,7 @@ export default function ServicesPage() {
         
         // 🚀 Update in state without re-fetch (NO reads!)
         setServices(prev => prev.map(s => s.id === editingService.id ? { ...s, ...data } : s));
+        updateServiceLive({ id: editingService.id, ...data }); // 🔴 real-time: only this service
         toast.success('Service updated');
       } else {
         // Add new service
@@ -277,6 +339,7 @@ export default function ServicesPage() {
         
         // 🚀 Add to state without re-fetch (NO reads!)
         const newService = { id: docRef.id, ...data, createdAt: Timestamp.now() };
+        updateServiceLive(newService); // 🔴 real-time: only this service
         setServices(prev => [...prev, newService].sort((a, b) => {
           const idA = parseInt(a.serviceId) || 0;
           const idB = parseInt(b.serviceId) || 0;
@@ -289,6 +352,8 @@ export default function ServicesPage() {
       setForm(EMPTY_FORM); 
       setEditingService(null);
       invalidateCache('collection:services');
+      invalidateCache('services:');
+      invalidateCache('collection:services:byServiceId');
       // ❌ Removed: fetchData() - NO re-fetch needed!
     } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
@@ -313,6 +378,12 @@ export default function ServicesPage() {
       isActive: svc.isActive,
       isFeatured: svc.isFeatured||false,
       isPopular: svc.isPopular||false,
+      isBestSeller: svc.isBestSeller||false,
+      isTrending: svc.isTrending||false,
+      isTopRated: svc.isTopRated||false,
+      isSale: svc.isSale||false,
+      isPremium: svc.isPremium||false,
+      isVIP: svc.isVIP||false,
       refillSupported: svc.refillSupported||false,
       refillPeriodDays: svc.refillPeriodDays || '',
       cancelSupported: svc.cancelSupported||false,
@@ -334,6 +405,9 @@ export default function ServicesPage() {
     // 🚀 Remove from state without re-fetch (NO reads!)
     setServices(prev => prev.filter(s => s.id !== id));
     invalidateCache('collection:services');
+    invalidateCache('services:');
+    invalidateCache('collection:services:byServiceId');
+    removeServiceLive(id); // 🔴 real-time: this service disappears
     toast.success('Deleted');
   };
 
@@ -342,6 +416,7 @@ export default function ServicesPage() {
     
     // 🚀 Update in state without re-fetch (NO reads!)
     setServices(prev => prev.map(s => s.id === svc.id ? { ...s, isActive: !s.isActive } : s));
+    updateServiceLive({ id: svc.id, isActive: !svc.isActive }); // 🔴 real-time availability
   };
 
   const availableCategories = form.platformId ? categories.filter(c => c.platformId === form.platformId) : [];
@@ -349,10 +424,10 @@ export default function ServicesPage() {
 
   const grouped = {};
   platforms.forEach(p => {
-    if (filterPlatform !== 'all' && p.id !== filterPlatform) return;
+    if (filterPlatform && p.id !== filterPlatform) return;
     grouped[p.id] = { platform: p, cats: {} };
     categories.filter(c => c.platformId === p.id).forEach(c => {
-      if (filterCategory !== 'all' && c.id !== filterCategory) return;
+      if (filterCategory && c.id !== filterCategory) return;
       grouped[p.id].cats[c.id] = { category: c, svcs: services.filter(s => s.platformId === p.id && s.categoryId === c.id) };
     });
   });
@@ -364,9 +439,158 @@ export default function ServicesPage() {
           <h2 className="text-2xl font-bold text-dark-900 dark:text-white mb-1">Service Management</h2>
           <p className="text-dark-500 dark:text-dark-400 text-sm">{services.length} services across {platforms.length} platforms</p>
         </div>
-        <button onClick={() => openAdd()} disabled={!platforms.length || !categories.length} className="btn-primary flex items-center gap-2">
-          <FiPlus /> Add Service
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => { const ok = await bumpFullRefresh(); if (ok) { toast.success('🔄 Realtime refresh pushed'); } else { toast.error('Push failed'); } }}
+            className="btn-outline flex items-center gap-2 text-sm"
+          >
+            <FiRefreshCw /> Push Realtime Update
+          </button>
+          <button onClick={() => openAdd()} disabled={!platforms.length || !categories.length} className="btn-primary flex items-center gap-2">
+            <FiPlus /> Add Service
+          </button>
+        </div>
+      </div>
+
+      {/* Service ID Quick Search */}
+      <div className="bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-700 rounded-xl p-5 mb-6 shadow-lg">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center">
+            <FiSearch className="text-white" size={18} />
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 dark:text-white text-base">Quick Service Search</h3>
+            <p className="text-xs text-gray-500 dark:text-dark-400">Find and edit services instantly by ID</p>
+          </div>
+        </div>
+        
+        <div className="relative">
+          <div className="relative">
+            <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-400 z-10" size={18} />
+            <input
+              type="text"
+              placeholder="280"
+              value={serviceIdSearch}
+              onChange={(e) => handleServiceIdSearch(e.target.value)}
+              className="w-full pl-11 pr-11 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-dark-500 text-sm font-mono transition-all"
+            />
+            {serviceIdSearch && (
+              <button
+                onClick={() => {
+                  setServiceIdSearch('');
+                  setShowSearchResults(false);
+                }}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-500 hover:text-red-400 transition-colors"
+              >
+                <FiXCircle size={16} />
+              </button>
+            )}
+          </div>
+          
+          {/* Search Results Dropdown */}
+          {showSearchResults && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-dark-900 border border-gray-200 dark:border-dark-700 rounded-xl shadow-2xl z-50 max-h-80 overflow-y-auto">
+              {searchResults.length === 0 ? (
+                <div className="p-6 text-center">
+                  <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center mx-auto mb-3">
+                    <FiSearch className="text-gray-400 dark:text-dark-500" size={20} />
+                  </div>
+                  <p className="text-gray-700 dark:text-dark-300 font-medium text-sm mb-1">No Services Found</p>
+                  <p className="text-gray-500 dark:text-dark-500 text-xs">No services match ID "{serviceIdSearch}"</p>
+                </div>
+              ) : (
+                <>
+                  <div className="px-4 py-2.5 border-b border-gray-200 dark:border-dark-700 bg-gray-50 dark:bg-dark-900">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-dark-400 uppercase tracking-wide">
+                      {searchResults.length} SERVICE{searchResults.length === 1 ? '' : 'S'} FOUND
+                    </p>
+                  </div>
+                  <div className="divide-y divide-gray-100 dark:divide-dark-700">
+                    {searchResults.map((service) => {
+                      const platform = platforms.find(p => p.id === service.platformId);
+                      const category = categories.find(c => c.id === service.categoryId);
+                      const provider = providers.find(p => p.id === service.providerId);
+                      
+                      return (
+                        <button
+                          key={service.id}
+                          onClick={() => quickEditService(service)}
+                          className="w-full text-left px-4 py-3.5 bg-white dark:bg-dark-900 hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors group flex items-center gap-3"
+                        >
+                          {/* Service ID Badge */}
+                          <div className="relative flex-shrink-0">
+                            <div className="w-11 h-11 rounded-lg bg-blue-600 border border-blue-500 flex items-center justify-center group-hover:bg-blue-500 transition-colors">
+                              <span className="text-white font-mono font-bold text-sm">
+                                {service.serviceId}
+                              </span>
+                            </div>
+                            {!service.isActive && (
+                              <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white dark:border-dark-900"></div>
+                            )}
+                          </div>
+                          
+                          {/* Service Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm mb-1.5 truncate group-hover:text-blue-400 transition-colors">
+                              {service.name}
+                            </p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {/* Platform */}
+                              {platform && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 dark:bg-dark-800 text-xs text-gray-600 dark:text-dark-300 font-medium">
+                                  {platform.name}
+                                </span>
+                              )}
+                              
+                              {/* Category */}
+                              {category && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 dark:bg-dark-800 text-xs text-gray-600 dark:text-dark-300 font-medium">
+                                  {category.name}
+                                </span>
+                              )}
+                              
+                              {/* Provider */}
+                              {provider && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 dark:bg-dark-800 text-xs text-orange-600 dark:text-orange-400 font-medium">
+                                  {provider.name}
+                                </span>
+                              )}
+                              
+                              {/* Status Badges */}
+                              {service.isFeatured && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 text-xs font-medium">
+                                  ★
+                                </span>
+                              )}
+                              {!service.isActive && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium">
+                                  Inactive
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Price & Edit */}
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <div className="text-right">
+                              <p className="text-base font-bold text-blue-600 dark:text-blue-400">
+                                {format(service.price || 0)}
+                              </p>
+                              <p className="text-[10px] text-gray-500 dark:text-dark-500 font-medium">per 1000</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-lg bg-blue-600 border border-blue-500 group-hover:bg-blue-500 flex items-center justify-center transition-colors">
+                              <FiEdit2 className="text-white" size={14} />
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {!platforms.length && <div className="glass-card p-4 mb-4 border border-yellow-500/30 bg-yellow-500/10"><p className="text-yellow-300 text-sm">Create platforms first.</p></div>}
@@ -375,13 +599,19 @@ export default function ServicesPage() {
       <div className="glass-card p-4 mb-6">
         <div className="flex gap-4 items-center flex-wrap">
           <FiFilter className="text-dark-400" />
-          <select value={filterPlatform} onChange={e => { setFilterPlatform(e.target.value); setFilterCategory('all'); }} className={inputCls + ' max-w-[180px] py-2'}>
-            <option value="all">All Platforms</option>
+          <select value={filterPlatform} onChange={e => { 
+            const newPlatformId = e.target.value;
+            setFilterPlatform(newPlatformId); 
+            // Reset to first category of new platform
+            const firstCat = categories.find(c => c.platformId === newPlatformId);
+            setFilterCategory(firstCat ? firstCat.id : '');
+          }} className={inputCls + ' max-w-[180px] py-2'}>
+            <option value="">Select Platform</option>
             {platforms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className={inputCls + ' max-w-[180px] py-2'} disabled={filterPlatform === 'all'}>
+          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className={inputCls + ' max-w-[180px] py-2'} disabled={!filterPlatform}>
             <option value="all">All Categories</option>
-            {categories.filter(c => filterPlatform === 'all' || c.platformId === filterPlatform).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {categories.filter(c => !filterPlatform || c.platformId === filterPlatform).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
       </div>
@@ -439,6 +669,12 @@ export default function ServicesPage() {
                                     {svc.cancelSupported && <span className="text-blue-500">✕ Cancel</span>}
                                     {svc.isFeatured && <span className="text-yellow-500">★ Featured</span>}
                                     {svc.isPopular && <span className="text-pink-500">🔥 Popular</span>}
+                                    {svc.isBestSeller && <span className="text-amber-600">🏆 Best Seller</span>}
+                                    {svc.isTrending && <span className="text-rose-500">📈 Trending</span>}
+                                    {svc.isTopRated && <span className="text-emerald-500">⭐ Top Rated</span>}
+                                    {svc.isSale && <span className="text-red-500">🏷️ Sale</span>}
+                                    {svc.isPremium && <span className="text-violet-500">💎 Premium</span>}
+                                    {svc.isVIP && <span className="text-yellow-500">👑 VIP</span>}
                                     {svc.maintenance && <span className="text-orange-500 font-bold">🔧 Maintenance</span>}
                                   </div>
                                   {/* Admin-only: Provider Name & Service ID */}
@@ -606,7 +842,7 @@ export default function ServicesPage() {
               <div>
                 <label className={labelCls}>Features</label>
                 <div className="grid grid-cols-3 gap-3">
-                  {[['isActive','✓ Active'],['isFeatured','★ Featured'],['isPopular','🔥 Popular'],['refillSupported','↩ Refill'],['cancelSupported','✕ Cancel'],['refundSupported','$ Refund'],['customCommentsRequired','💬 Custom Comments']].map(([key, label]) => (
+                  {[['isActive','✓ Active'],['isFeatured','★ Featured'],['isPopular','🔥 Popular'],['isBestSeller','🏆 Best Seller'],['isTrending','📈 Trending'],['isTopRated','⭐ Top Rated'],['isSale','🏷️ Sale'],['isPremium','💎 Premium'],['isVIP','👑 VIP'],['refillSupported','↩ Refill'],['cancelSupported','✕ Cancel'],['refundSupported','$ Refund'],['customCommentsRequired','💬 Custom Comments']].map(([key, label]) => (
                     <button key={key} type="button" onClick={() => setForm({ ...form, [key]: !form[key ]})}
                       className={`py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${form[key ] ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/20 text-primary-700 dark:text-primary-400' : 'border-dark-200 dark:border-dark-700 text-dark-500 hover:border-primary-400'}`}>
                       {label}
@@ -650,29 +886,66 @@ export default function ServicesPage() {
         <ProviderBrowseModal
           provider={currentProvider}
           onClose={() => setShowBrowse(false)}
-          onSelect={svc => {
+          onSelect={async svc => {
+            // 🔍 DEBUG: Log the full service object to see what fields are available
+            console.log('🔍 Selected Provider Service:', svc);
+            console.log('🔍 All keys in service:', Object.keys(svc));
+            
             const requiresCustomComments = svc.type === 'Custom Comments' || (svc.name && svc.name.toLowerCase().includes('custom comment'));
             const priceInPKR = parseFloat(svc.rate || 0) * (rates?.PKR || 278.5);
             let refillPeriodDays = '';
             const refillMatch = svc.name?.match(/refill[:\s]+(\d+)\s*days?/i);
             if (refillMatch) { refillPeriodDays = refillMatch[1]; }
-            const description = svc.description || svc.desc || svc.dripfeed || '';
+            
+            // 🚀 IMPROVED: Better description detection with more keys and fallback logic
+            const descKeys = ['description','desc','details','detail','note','notes','instructions','full_description','service_description','sdesc','short_desc','service_desc','long_desc','dripfeed','info','information'];
+            let description = '';
+            
+            // Try to find description from any of the common keys
+            for (const key of descKeys) {
+              const foundKey = Object.keys(svc).find(k => k.toLowerCase() === key.toLowerCase());
+              if (foundKey && svc[foundKey]) {
+                description = String(svc[foundKey]).trim();
+                console.log(`✅ Found description in field: ${foundKey}`, description.substring(0, 100));
+                break;
+              }
+            }
+            
+            // If still no description, try to concatenate all text fields except known ones
+            if (!description) {
+              const skipKeys = ['service', 'name', 'category', 'rate', 'min', 'max', 'type', 'refill', 'cancel', 'price', 'add_type', 'link', 'dripfeed'];
+              const textFields = Object.entries(svc)
+                .filter(([k, v]) => 
+                  typeof v === 'string' && 
+                  v.length > 20 && 
+                  !skipKeys.includes(k.toLowerCase())
+                )
+                .map(([k, v]) => v);
+              
+              if (textFields.length > 0) {
+                description = textFields[0]; // Take the first long text field
+                console.log('⚠️ No standard description field found, using first long text field:', description.substring(0, 100));
+              } else {
+                console.log('❌ No description found at all');
+              }
+            }
+            
             const hasRefill = svc.refill === true || svc.refill === 'true' || refillMatch;
             setForm(prev => ({
               ...prev,
               name: svc.name || prev.name,
               providerServiceId: String(svc.service),
               price: priceInPKR.toFixed(4),
+              providerPrice: priceInPKR.toFixed(4),
               minQuantity: parseInt(svc.min || 100),
               maxQuantity: parseInt(svc.max || 100000),
-              description: description,
+              description: description, // 🚀 Now properly filled
               refillPeriodDays: refillPeriodDays,
               customCommentsRequired: requiresCustomComments,
               refillSupported: hasRefill,
               cancelSupported: svc.cancel === true || svc.cancel === 'true',
             }));
             setShowBrowse(false);
-            toast.success(`Imported! Price: ₨${priceInPKR.toFixed(4)} PKR`, { duration: 5000 });
           }}
         />
       )}

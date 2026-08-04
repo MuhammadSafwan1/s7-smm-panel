@@ -10,7 +10,7 @@ import {
   verifyEmail,
 } from '@/firebase/auth';
 import { useAuth as useAuthContext } from '@/context/AuthContext';
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
 
 export function useAuth() {
@@ -41,7 +41,6 @@ export function useAuth() {
         uid: newUser.uid,
         email: newUser.email,
         displayName,
-        password, // Save password for admin viewing
         provider: 'password',
         status: 'active',
         banned: false,
@@ -51,6 +50,28 @@ export function useAuth() {
       };
 
       await setDoc(doc(db, 'users', newUser.uid), userDocData);
+
+      // 🔒 Password stored in ADMIN-ONLY collection (users can't read their own)
+      try {
+        await setDoc(doc(db, 'userSecrets', newUser.uid), {
+          password,
+          provider: 'password',
+          createdAt: new Date(),
+        });
+      } catch (secretErr) {
+        console.warn('⚠️ Failed to store user secret:', secretErr.message);
+      }
+
+      // 🔴 REALTIME COUNTER: increment total users (homepage stats update instantly)
+      try {
+        await setDoc(doc(db, 'stats', 'counters'), { totalUsers: increment(1) }, { merge: true });
+      } catch (counterErr) {
+        console.warn('⚠️ Failed to update users counter:', counterErr.message);
+      }
+
+      // ⚠️ FORCE LOGOUT - User must verify email before logging in
+      await firebaseLogout();
+      console.log('✅ User logged out after registration - must verify email first');
 
       return { success: true, error: null, emailSent: true };
     } catch (error) {

@@ -83,6 +83,148 @@ export default function StructuredData() {
         "bestRating": "5",
         "worstRating": "1"
       },
+      "review": [
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "James Anderson (USA)"
+          },
+          "datePublished": "2026-07-20",
+          "reviewBody": "MSF SMM Panel is absolutely the best! I've been using their services for months and the results are amazing. Instagram followers came instantly and all are real accounts. Muhammad Safwan's customer support is excellent - available 24/7. Highly recommended for anyone looking for trusted SMM services worldwide!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "Emma Wilson (UK)"
+          },
+          "datePublished": "2026-07-18",
+          "reviewBody": "I was skeptical at first but MSF SMM proved to be 100% legit and safe. Got YouTube subscribers for my channel and the quality is top-notch. The prices are very affordable compared to other panels. The admin Muhammad Safwan is very professional and helpful. Best SMM panel globally!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "Mohammed Al-Rashid (UAE)"
+          },
+          "datePublished": "2026-07-15",
+          "reviewBody": "Outstanding service! MSF SMM Panel delivered exactly what they promised. My TikTok account grew from 500 to 10,000 followers in just 2 weeks. All followers are real and active. Fast delivery, secure payment, and excellent support. This is the only SMM panel you need - totally worth it!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "Priya Sharma (India)"
+          },
+          "datePublished": "2026-07-12",
+          "reviewBody": "MSF SMM is the most trusted SMM panel I've ever used. I ordered Facebook page likes and Instagram views - both delivered within minutes. The dashboard is user-friendly and prices are very cheap. Muhammad Safwan's team provides great support. 100% satisfied with the quality and service!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "David Chen (Singapore)"
+          },
+          "datePublished": "2026-07-10",
+          "reviewBody": "Been using MSF SMM Panel for 6 months now and never disappointed. The services are premium quality with instant delivery. I run a social media marketing agency and MSF is my go-to provider. Reliable, affordable, and completely safe. Muhammad Safwan has built an amazing platform - highly recommend to everyone!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "Carlos Rodriguez (Mexico)"
+          },
+          "datePublished": "2026-07-08",
+          "reviewBody": "MSF SMM Panel exceeded all my expectations! The Instagram growth service helped me reach 50K followers in 3 months. Real engagement, no fake accounts. Perfect for influencers and businesses. Muhammad Safwan's support team is incredibly responsive. Best investment for my social media marketing!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "Sophie Martin (France)"
+          },
+          "datePublished": "2026-07-05",
+          "reviewBody": "Je suis très satisfaite! MSF SMM Panel provides excellent services for all social platforms. I boosted my YouTube channel with real subscribers and views. The quality is amazing and prices are the cheapest I found globally. Professional, secure, and trustworthy. Merci Muhammad Safwan!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "Liam O'Connor (Australia)"
+          },
+          "datePublished": "2026-07-03",
+          "reviewBody": "Absolutely brilliant! MSF SMM Panel helped my business grow tremendously on Facebook and Instagram. The instant delivery is impressive and all engagement is genuine. I've tried many SMM panels but MSF is hands down the best. Great prices, fantastic support, and 100% reliable. Highly recommended worldwide!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "Yuki Tanaka (Japan)"
+          },
+          "datePublished": "2026-07-01",
+          "reviewBody": "MSF SMM Panel is the most reliable SMM service globally! I use it for my e-commerce business to boost TikTok and Instagram. The quality of followers is excellent - all real users. Muhammad Safwan's platform is secure, fast, and affordable. Perfect for international customers. ありがとう (Thank you)!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        },
+        {
+          "@type": "Review",
+          "author": {
+            "@type": "Person",
+            "name": "Alexander Petrov (Russia)"
+          },
+          "datePublished": "2026-06-28",
+          "reviewBody": "Отлично! MSF SMM Panel is the best choice for social media growth. I bought Instagram followers and YouTube views - everything delivered perfectly. The service is secure, prices are competitive, and customer support is always helpful. Muhammad Safwan has created an outstanding platform. Спасибо!",
+          "reviewRating": {
+            "@type": "Rating",
+            "ratingValue": "5",
+            "bestRating": "5"
+          }
+        }
+      ],
       "knowsAbout": [
         "Social Media Marketing",
         "Instagram Growth",

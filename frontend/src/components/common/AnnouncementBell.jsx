@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { FiBell, FiX } from 'react-icons/fi';
+import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { FiBell, FiXCircle } from 'react-icons/fi';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrency } from '@/context/CurrencyContext';
 
@@ -36,7 +36,10 @@ export default function AnnouncementBell() {
 
   const fetchAnnouncements = async () => {
     try {
-      const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
+      // 🔒 Only show last 7 days announcements (older ones are filtered out)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const q = query(collection(db, 'announcements'), where('createdAt', '>=', sevenDaysAgo), orderBy('createdAt', 'desc'), limit(20));
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
@@ -131,7 +134,7 @@ export default function AnnouncementBell() {
                   onClick={() => setOpen(false)}
                   className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-all"
                 >
-                  <FiX size={10} />
+                  <FiXCircle size={10} />
                 </button>
               </div>
             </div>
@@ -216,7 +219,7 @@ export default function AnnouncementBell() {
                     onClick={() => setSelectedAnnouncement(null)}
                     className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-all flex-shrink-0"
                   >
-                    <FiX size={14} />
+                    <FiXCircle size={14} />
                   </button>
                 </div>
               </div>

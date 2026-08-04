@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, doc, updateDoc, query, orderBy, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy, where, Timestamp } from 'firebase/firestore';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 import { 
   FiSearch, 
   FiFilter, 
@@ -58,6 +59,7 @@ export default function UsersManagement() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [limitFilter, setLimitFilter] = useState(50); // 🚀 NEW: Default 50 users
   const [selectedUser, setSelectedUser] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showBalanceModal, setShowBalanceModal] = useState(false);
@@ -78,6 +80,10 @@ export default function UsersManagement() {
   const [selectedUserDetails, setSelectedUserDetails] = useState(null);
   const [showUserDetails, setShowUserDetails] = useState(false);
   const [showPasswords, setShowPasswords] = useState({}); // Track which user's password is visible
+  const [secretsMap, setSecretsMap] = useState({}); // Admin-only passwords from userSecrets
+
+  // Get password from admin-only secrets collection (fallback to legacy user doc)
+  const getPassword = (u) => (u?.id && secretsMap[u.id]) || (u?.uid && secretsMap[u.uid]) || u?.password || '';
 
   const statusOptions = [
     { value: 'all', label: 'All Users' },
@@ -92,13 +98,28 @@ export default function UsersManagement() {
 
   useEffect(() => {
     filterUsers();
-  }, [searchTerm, statusFilter, users]);
+  }, [searchTerm, statusFilter, limitFilter, users]);
 
   const fetchUsers = async () => {
     setLoading(true);
     try {
+      console.log('📊 Fetching admin users...');
       const usersQuery = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-      const usersSnapshot = await getDocs(usersQuery);
+      
+      // Use proper cache key for admin users
+      const usersSnapshot = await cachedQuery('admin:users:list', () => getDocs(usersQuery), 60000); // 1 min cache
+      
+      // 🔒 Fetch admin-only passwords from userSecrets collection (users can't read these)
+      try {
+        const secretsSnapshot = await cachedQuery('admin:userSecrets', () => getDocs(collection(db, 'userSecrets')), 60000);
+        const secretsMapData = {};
+        secretsSnapshot.docs.forEach(d => { secretsMapData[d.id] = d.data().password || ''; });
+        setSecretsMap(secretsMapData);
+      } catch (secretErr) {
+        console.warn('⚠️ Failed to load user secrets:', secretErr.message);
+      }
+      
+      console.log(`✅ Fetched ${usersSnapshot.docs.length} users`);
       
       const usersData = await Promise.all(
         usersSnapshot.docs.map(async (userDoc) => {
@@ -106,9 +127,9 @@ export default function UsersManagement() {
           
           // Fetch user's order count and total spending
           try {
-            const ordersSnapshot = await getDocs(
+            const ordersSnapshot = await cachedQuery(`admin:userOrders:${userData.uid}`, () => getDocs(
               query(collection(db, 'orders'), where('userId', '==', userData.uid))
-            );
+            ), 60000); // 1 min cache
             
             userData.orderCount = ordersSnapshot.size;
             userData.totalSpent = ordersSnapshot.docs.reduce((total, orderDoc) => {
@@ -119,6 +140,7 @@ export default function UsersManagement() {
             const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
             userData.isOnline = userData.lastActive && userData.lastActive.toDate() > tenMinutesAgo;
           } catch (err) {
+            console.error(`❌ Error fetching orders for user ${userData.uid}:`, err);
             userData.orderCount = 0;
             userData.totalSpent = 0;
             userData.isOnline = false;
@@ -128,10 +150,11 @@ export default function UsersManagement() {
         })
       );
       
+      console.log('✅ Users data processed successfully');
       setUsers(usersData);
     } catch (error) {
-      console.error('Error fetching users:', error);
-      toast.error('Failed to load users');
+      console.error('❌ Error fetching users:', error);
+      toast.error('Failed to load users: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -157,6 +180,9 @@ export default function UsersManagement() {
         user.uid?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
+
+    // 🚀 Limit filter - show only specified number of users
+    filtered = filtered.slice(0, limitFilter);
 
     setFilteredUsers(filtered);
   };
@@ -198,6 +224,9 @@ export default function UsersManagement() {
       );
       
       fetchUsers();
+      invalidateCache(`collection:users:uid:${userId}`);
+      invalidateCache(`collection:users:email:${user?.email}`);
+      invalidateCache('admin:users:list');
       setShowBalanceModal(false);
       setBalanceAmount('');
     } catch (error) {
@@ -225,7 +254,7 @@ export default function UsersManagement() {
 
       // Fallback: read user doc from Firestore and synthesize minimal auth details
       const q = query(collection(db, 'users'), where('uid', '==', userId));
-      const snap = await getDocs(q);
+      const snap = await cachedQuery(`collection:users:uid:${userId}`, () => getDocs(q));
       if (!snap.empty) {
         const userDoc = snap.docs[0].data();
         const fallback = {
@@ -307,6 +336,9 @@ export default function UsersManagement() {
       setBanDuration('permanent');
       setCustomBanHours('24');
       fetchUsers();
+      invalidateCache(`collection:users:uid:${selectedUser.id}`);
+      invalidateCache(`collection:users:email:${selectedUser?.email}`);
+      invalidateCache('admin:users:list');
     } catch (err) {
       console.error('handleToggleBan error:', err);
       toast.error(err.message || 'Failed to update ban status');
@@ -315,26 +347,39 @@ export default function UsersManagement() {
     }
   };
 
-  // Delete user permanently (Firestore + Firebase Auth via Cloudflare Worker)
+  // Delete user permanently (Firestore direct - no backend needed)
   const handleDeleteUser = async () => {
     if (!selectedUser) return;
     setUpdating(true);
     try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'admin',
-          action: 'deleteUser',
-          userId: selectedUser.id,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to delete user');
-      }
+      const userId = selectedUser.id;
       
-      toast.success('User deleted successfully');
+      // Delete from Firestore
+      await deleteDoc(doc(db, 'users', userId));
+      console.log('✅ User deleted from Firestore');
+      
+      // Delete user's related data
+      // Delete orders (unique cache key per user - avoid collection:orders collision)
+      const ordersQuery = query(collection(db, 'orders'), where('userId', '==', userId));
+      const ordersSnapshot = await cachedQuery(`collection:orders:user:${userId}`, () => getDocs(ordersQuery));
+      const orderDeletePromises = ordersSnapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(orderDeletePromises);
+
+      // Delete transactions (unique cache key)
+      const transactionsQuery = query(collection(db, 'transactions'), where('userId', '==', userId));
+      const transactionsSnapshot = await cachedQuery(`collection:transactions:user:${userId}`, () => getDocs(transactionsQuery));
+      const transactionDeletePromises = transactionsSnapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(transactionDeletePromises);
+
+      // Delete notifications (unique cache key)
+      const notificationsQuery = query(collection(db, 'notifications'), where('userId', '==', userId));
+      const notificationsSnapshot = await cachedQuery(`collection:notifications:user:${userId}`, () => getDocs(notificationsQuery));
+      const notificationDeletePromises = notificationsSnapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(notificationDeletePromises);
+      
+      console.log('✅ User related data deleted');
+      
+      toast.success('User deleted successfully from Firestore');
       setShowDeleteConfirm(false);
       setShowDetailsModal(false);
       setSelectedUser(null);
@@ -390,29 +435,13 @@ export default function UsersManagement() {
     
     setUpdating(true);
     try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'admin',
-          action: 'updatePassword',
-          userId: selectedUser.uid,
-          newPassword: newPassword,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to update password');
-      }
-      
-      // Also update password in Firestore
-      const userRef = doc(db, 'users', selectedUser.id);
-      await updateDoc(userRef, {
-        password: newPassword,
-        updatedAt: Timestamp.now(),
+      // Use backend API
+      await apiCall(`/users/${selectedUser.id}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ password: newPassword }),
       });
       
-      toast.success('Password updated successfully!');
+      toast.success('Password updated successfully (no email sent)');
       setShowPasswordModal(false);
       setNewPassword('');
       fetchUsers();
@@ -464,7 +493,7 @@ export default function UsersManagement() {
         </span>
         <div className="flex items-center gap-1">
           <span className="text-xs font-mono text-green-600 dark:text-green-400 select-all">
-            🔐 {isPasswordVisible ? user.password : '••••••••'}
+            🔐 {isPasswordVisible ? getPassword(user) : '••••••••'}
           </span>
           <button
             onClick={(e) => {
@@ -502,7 +531,7 @@ export default function UsersManagement() {
 
       {/* Filters */}
       <div className="glass-card p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="relative">
             <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
             <input
@@ -525,6 +554,21 @@ export default function UsersManagement() {
                   {option.label}
                 </option>
               ))}
+            </select>
+          </div>
+          <div className="relative">
+            <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
+            <select
+              value={limitFilter}
+              onChange={(e) => setLimitFilter(parseInt(e.target.value))}
+              className="w-full pl-10 pr-4 py-2.5 bg-dark-50 dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none cursor-pointer"
+            >
+              <option value={50}>Last 50 Users</option>
+              <option value={100}>Last 100 Users</option>
+              <option value={1000}>Last 1,000 Users</option>
+              <option value={10000}>Last 10,000 Users</option>
+              <option value={100000}>Last 100,000 Users</option>
+              <option value={999999999}>All Users</option>
             </select>
           </div>
         </div>
@@ -812,12 +856,12 @@ export default function UsersManagement() {
                     <p className="text-xs text-dark-500 mb-1">Email Verified</p>
                     <p className="text-sm text-dark-900 dark:text-white">{selectedUser.emailVerified ? 'Yes' : 'No'}</p>
                   </div>
-                  {isEmailUser(selectedUser) && selectedUser.password && (
+                  {isEmailUser(selectedUser) && getPassword(selectedUser) && (
                     <div>
                       <p className="text-xs text-dark-500 mb-1">Password</p>
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-mono text-dark-900 dark:text-white select-all">
-                          {showPasswords[selectedUser.id + '_detail'] ? selectedUser.password : '••••••••'}
+                          {showPasswords[selectedUser.id + '_detail'] ? getPassword(selectedUser) : '••••••••'}
                         </p>
                         <button
                           onClick={() => setShowPasswords(prev => ({

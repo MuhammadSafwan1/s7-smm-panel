@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, doc, updateDoc, query, orderBy, where, addDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, query, orderBy, where, addDoc, onSnapshot } from 'firebase/firestore';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 import { useCurrency } from '@/context/CurrencyContext';
 import {
   FiSearch, FiFilter, FiCheckCircle, FiClock,
@@ -26,6 +27,13 @@ export default function OrdersManagement() {
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [refundAmount, setRefundAmount] = useState('');
   const [providers, setProviders] = useState({});
+  const emailMapRef = useRef({});
+  const syncedOnceRef = useRef(false);
+  const ordersRef = useRef([]);
+  const providersRef = useRef({});
+
+  useEffect(() => { ordersRef.current = orders; }, [orders]);
+  useEffect(() => { providersRef.current = providers; }, [providers]);
 
   const PROXY = 'https://smm-proxy.ms8347750.workers.dev';
   const SYNC_INTERVAL = 120000; // 2 minutes
@@ -58,63 +66,116 @@ export default function OrdersManagement() {
   ];
 
   useEffect(() => { 
-    fetchOrders();
     fetchProviders();
     
-    // Auto-sync every 2 minutes
+    // 🔴 REALTIME orders listener - initial load + live status updates
+    // (sirf changes download hote hain, initial load ke baad)
+    const ordersQuery = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(ordersQuery, async (snap) => {
+      try {
+        const raw = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Batch-fetch emails only for new/unknown user IDs
+        const unknownUids = [...new Set(raw.map(o => o.userId).filter(uid => uid && !emailMapRef.current[uid]))];
+        for (let i = 0; i < unknownUids.length; i += 10) {
+          const batch = unknownUids.slice(i, i + 10);
+          const u = await getDocs(query(collection(db, 'users'), where('uid', 'in', batch)));
+          u.docs.forEach(ud => { emailMapRef.current[ud.data().uid] = ud.data().email; });
+        }
+        const allOrders = raw.map(o => ({
+          ...o,
+          userEmail: emailMapRef.current[o.userId] || o.userEmail,
+        }));
+
+        setOrders(applySmartFilter(allOrders));
+
+        // Auto-sync with provider once after initial load
+        if (!syncedOnceRef.current) {
+          syncedOnceRef.current = true;
+          syncOrdersList(allOrders).then(synced => setOrders(applySmartFilter(synced)));
+        }
+      } catch (e) {
+        console.error('❌ Realtime orders error:', e);
+      } finally {
+        setLoading(false);
+      }
+    }, (err) => {
+      console.error('❌ Realtime orders listener error:', err);
+      setLoading(false);
+    });
+
+    // Provider API status polling every 2 minutes (writes to Firestore → listener updates UI instantly)
     const interval = setInterval(() => {
       syncActiveOrders();
     }, SYNC_INTERVAL);
-    
-    return () => clearInterval(interval);
+
+    return () => { unsub(); clearInterval(interval); };
   }, []);
   
   useEffect(() => { filterOrders(); }, [searchTerm, statusFilter, orders]);
 
   const fetchProviders = async () => {
     try {
-      const snap = await getDocs(collection(db, 'providers'));
+      const snap = await cachedQuery('collection:providers', async () => {
+        console.log('🔍 Fetching providers from Firestore...');
+        const providersSnap = await getDocs(collection(db, 'providers'));
+        console.log(`✅ Fetched ${providersSnap.docs.length} providers`);
+        return providersSnap;
+      });
+      
       const providerMap = {};
       snap.docs.forEach(d => {
         providerMap[d.id] = d.data();
       });
       setProviders(providerMap);
+      console.log('✅ Providers loaded successfully');
     } catch (e) {
-      console.error('Failed to load providers', e);
+      console.error('❌ Failed to load providers:', e);
+      // Set empty providers map to prevent further errors
+      setProviders({});
     }
   };
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const snap = await getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc')));
-      const data = await Promise.all(snap.docs.map(async (d) => {
-        const o = { id: d.id, ...d.data() };
-        try {
-          if (o.userId) {
-            const u = await getDocs(query(collection(db, 'users'), where('uid', '==', o.userId)));
-            if (!u.empty) o.userEmail = u.docs[0].data().email;
-          }
-        } catch (_) {}
-        return o;
-      }));
-      setOrders(data);
+  // 🚀 Smart Date Filtering (Admin) Based on Refill Period:
+  // - 365-day refill orders: Keep for 365 days
+  // - 30-day refill orders: Keep for 30 days
+  // - No refill orders: Keep for 7 days only
+  const applySmartFilter = (allOrders) => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const oneYearAgo = new Date();
+    oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+    
+    return allOrders.filter(order => {
+      const orderDate = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt || 0);
       
-      // Auto-sync active orders after loading
-      const synced = await syncOrdersList(data);
-      setOrders(synced);
-    } catch (e) {
-      toast.error('Failed to load orders');
-    } finally {
-      setLoading(false);
-    }
+      // Get refill days from order
+      const refillDays = order.refillDays || order.refillPeriodDays || 0;
+      
+      // If no refill support, keep only 7 days
+      if (!order.refillSupported && !order.hasRefill) {
+        return orderDate >= sevenDaysAgo;
+      }
+      
+      // If refill supported:
+      if (refillDays >= 365) {
+        return orderDate >= oneYearAgo;  // 365+ days refill
+      } else if (refillDays >= 30) {
+        const customCutoff = new Date();
+        customCutoff.setDate(customCutoff.getDate() - refillDays);
+        return orderDate >= customCutoff;  // Custom period (30-364 days)
+      } else {
+        return orderDate >= sevenDaysAgo;  // Short/no refill period
+      }
+    });
   };
 
   const syncActiveOrders = async () => {
     setSyncing(true);
     try {
       console.log('🔄 Auto-syncing active orders with provider...');
-      const current = [...orders];
+      const current = [...ordersRef.current];
       const synced = await syncOrdersList(current);
       setOrders(synced);
       console.log('✅ Sync complete');
@@ -148,11 +209,9 @@ export default function OrdersManagement() {
 
   const syncSingleOrder = async (order) => {
     try {
-      // Get provider
-      const providerDoc = await getDocs(query(collection(db, 'providers'), where('__name__', '==', order.providerId)));
-      if (providerDoc.empty) return order;
-      
-      const provider = providerDoc.docs[0].data();
+      // Get provider from already-loaded providers map (no Firestore read needed)
+      const provider = providersRef.current[order.providerId];
+      if (!provider) return order;
       
       // Fetch status from provider
       const res = await fetch(PROXY, {
@@ -195,53 +254,86 @@ export default function OrdersManagement() {
           updateData.completedAt = new Date();
         }
 
-        // Auto-refund for partial (98%)
-        if (newStatus === 'partial' && order.charge && !order.refundIssued) {
-          const refundAmount = parseFloat((order.charge * 0.98 * (remains / parseInt(order.quantity))).toFixed(4));
+        // ✅ AUTO-REFUND: Only when PROVIDER issues ACTUAL REFUND
+        // "Refunded" status = Provider refunded money to admin, so user gets refund
+        // "Cancelled" status = Order cancelled but NO refund from provider, so NO refund to user
+        if (newStatus === 'refunded' && order.charge && !order.refundIssued) {
+          console.log(`💰 Provider issued REFUND - Processing auto-refund for user`);
+          
+          const refundAmount = parseFloat((order.charge * 0.89).toFixed(4)); // 89% (11% fee)
           if (refundAmount > 0) {
-            const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
-            if (!userSnap.empty) {
-              const userDoc = userSnap.docs[0];
-              const newBal = parseFloat(((userDoc.data().walletBalance || 0) + refundAmount).toFixed(4));
-              await updateDoc(doc(db, 'users', userDoc.id), { walletBalance: newBal });
-              await addDoc(collection(db, 'transactions'), {
-                userId: order.userId,
-                orderId: order.id,
-                type: 'refund',
-                amount: refundAmount,
-                description: `Partial refund (2% fee) for order #${order.id.substring(0, 8)}`,
-                createdAt: new Date(),
-              });
+            try {
+              const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
+              if (!userSnap.empty) {
+                const userDoc = userSnap.docs[0];
+                const newBal = parseFloat(((userDoc.data().walletBalance || 0) + refundAmount).toFixed(4));
+                await updateDoc(doc(db, 'users', userDoc.id), { walletBalance: newBal });
+                
+                await addDoc(collection(db, 'transactions'), {
+                  userId: order.userId,
+                  orderId: order.id,
+                  type: 'refund',
+                  amount: refundAmount,
+                  description: `Refund for order #${order.id.substring(0, 8)}`,
+                  createdAt: new Date(),
+                });
+                
+                console.log(`✅ Auto-refunded ${refundAmount} to user (provider refunded)`);
+              }
+              updateData.refundIssued = true;
+              updateData.refundAmount = refundAmount;
+            } catch (refundErr) {
+              console.error('❌ Auto-refund failed:', refundErr.message);
+              // Continue with status update even if refund fails
             }
-            updateData.refundIssued = true;
-            updateData.refundAmount = refundAmount;
           }
         }
+        
+        // ❌ NO AUTO-REFUND for "Cancelled" status
+        // Cancelled = Order cancelled but provider did NOT refund
+        // Admin must manually refund if they want to give money back to user
+        if (newStatus === 'cancelled' && !order.refundIssued) {
+          console.log(`⚠️ Order cancelled but NO auto-refund (provider did not refund)`);
+        }
 
-        // Auto-refund for cancelled/refunded by provider (98%)
-        if ((newStatus === 'cancelled' || newStatus === 'refunded') && order.charge && !order.refundIssued) {
-          const refundAmount = parseFloat((order.charge * 0.98).toFixed(4));
+        // ✅ AUTO-REFUND: Partial orders - refund unfulfilled portion
+        if (newStatus === 'partial' && order.charge && !order.refundIssued) {
+          console.log(`💰 Provider marked partial - Processing partial refund for user`);
+          
+          const refundAmount = parseFloat((order.charge * 0.89 * (remains / parseInt(order.quantity))).toFixed(4)); // 89% (11% fee)
           if (refundAmount > 0) {
-            const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
-            if (!userSnap.empty) {
-              const userDoc = userSnap.docs[0];
-              const newBal = parseFloat(((userDoc.data().walletBalance || 0) + refundAmount).toFixed(4));
-              await updateDoc(doc(db, 'users', userDoc.id), { walletBalance: newBal });
-              await addDoc(collection(db, 'transactions'), {
-                userId: order.userId,
-                orderId: order.id,
-                type: 'refund',
-                amount: refundAmount,
-                description: `Provider ${newStatus} refund (2% fee) for order #${order.id.substring(0, 8)}`,
-                createdAt: new Date(),
-              });
+            try {
+              const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
+              if (!userSnap.empty) {
+                const userDoc = userSnap.docs[0];
+                const newBal = parseFloat(((userDoc.data().walletBalance || 0) + refundAmount).toFixed(4));
+                await updateDoc(doc(db, 'users', userDoc.id), { walletBalance: newBal });
+                
+                await addDoc(collection(db, 'transactions'), {
+                  userId: order.userId,
+                  orderId: order.id,
+                  type: 'refund',
+                  amount: refundAmount,
+                  description: `Partial refund for order #${order.id.substring(0, 8)}`,
+                  createdAt: new Date(),
+                });
+                
+                console.log(`✅ Auto-refunded ${refundAmount} to user (partial order)`);
+              }
+              updateData.refundIssued = true;
+              updateData.refundAmount = refundAmount;
+            } catch (refundErr) {
+              console.error('❌ Partial refund failed:', refundErr.message);
+              // Continue with status update even if refund fails
             }
-            updateData.refundIssued = true;
-            updateData.refundAmount = refundAmount;
           }
         }
 
         await updateDoc(doc(db, 'orders', order.id), updateData);
+        invalidateCache(`tx:all:${order.userId}`);
+        invalidateCache(`collection:transactions:user:${order.userId}`);
+        invalidateCache(`collection:users:uid:${order.userId}`);
+        invalidateCache(`userOrders:${order.userId}`);
         return { ...order, ...updateData };
       }
       
@@ -276,21 +368,19 @@ export default function OrdersManagement() {
         return;
       }
       
-      // Update Firestore first
+      // Update Firestore
       await updateDoc(doc(db, 'orders', orderId), { 
         status: newStatus, 
         updatedAt: new Date() 
       });
       
-      // If changing to cancelled/refunded, try to sync with provider and issue refund
-      if ((newStatus === 'cancelled' || newStatus === 'refunded') && order.providerOrderId && order.providerId && order.charge && !order.refundIssued) {
+      // If changing to cancelled, try to cancel with provider (no auto-refund)
+      if (newStatus === 'cancelled' && order.providerOrderId && order.providerId) {
         try {
-          // Get provider details
-          const providerSnap = await getDocs(query(collection(db, 'providers'), where('__name__', '==', order.providerId)));
+          // Get provider from already-loaded providers map
+          const provider = providers[order.providerId];
           
-          if (!providerSnap.empty) {
-            const provider = providerSnap.docs[0].data();
-            
+          if (provider) {
             // Try to cancel with provider
             const res = await fetch(PROXY, {
               method: 'POST',
@@ -306,42 +396,16 @@ export default function OrdersManagement() {
             if (res.ok) {
               const result = await res.json();
               console.log('Provider cancel result:', result);
+              toast.success('Order cancelled with provider');
             }
           }
-          
-          // Issue refund (98%) regardless of provider response
-          const refundAmount = parseFloat((order.charge * 0.98).toFixed(4));
-          const usersSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', order.userId)));
-          
-          if (!usersSnap.empty) {
-            const userDoc = usersSnap.docs[0];
-            const newBalance = parseFloat(((userDoc.data().walletBalance || 0) + refundAmount).toFixed(4));
-            await updateDoc(doc(db, 'users', userDoc.id), { walletBalance: newBalance });
-            
-            // Create transaction record
-            await addDoc(collection(db, 'transactions'), {
-              userId: order.userId,
-              orderId: order.id,
-              type: 'refund',
-              amount: refundAmount,
-              description: `Admin ${newStatus} refund (2% fee) for order #${order.id.substring(0, 8)}`,
-              createdAt: new Date(),
-            });
-            
-            // Mark refund as issued
-            await updateDoc(doc(db, 'orders', orderId), {
-              refundIssued: true,
-              refundAmount: refundAmount
-            });
-          }
-        } catch (refundError) {
-          console.error('Refund error:', refundError);
-          // Don't fail the status update if refund fails
+        } catch (cancelError) {
+          console.error('Provider cancel error:', cancelError);
+          toast.warning('Order status updated, but provider cancellation failed');
         }
       }
       
-      toast.success(`Status updated to ${newStatus}`);
-      await fetchOrders();
+      toast.success(`Status updated to ${newStatus}. Use "Refund" button to issue refund if needed.`);
       setShowDetailsModal(false);
     } catch (error) {
       console.error('Update status error:', error);
@@ -367,8 +431,8 @@ export default function OrdersManagement() {
     
     setUpdating(true);
     try {
-      // Get user document
-      const usersSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', selectedOrder.userId)));
+      // Get user document (unique cache key per uid - prevents wrong-user refunds)
+      const usersSnap = await cachedQuery(`collection:users:uid:${selectedOrder.userId}`, () => getDocs(query(collection(db, 'users'), where('uid', '==', selectedOrder.userId))));
       
       if (usersSnap.empty) {
         toast.error('User not found');
@@ -406,7 +470,11 @@ export default function OrdersManagement() {
       setShowRefundModal(false);
       setShowDetailsModal(false);
       setRefundAmount('');
-      await fetchOrders();
+      invalidateCache(`tx:all:${selectedOrder.userId}`);
+      invalidateCache(`collection:transactions:user:${selectedOrder.userId}`);
+      invalidateCache(`collection:users:uid:${selectedOrder.userId}`);
+      invalidateCache(`userOrders:${selectedOrder.userId}`);
+      // Realtime listener updates the list automatically
     } catch (error) {
       console.error('Refund error:', error);
       toast.error('Failed to refund: ' + error.message);
@@ -632,6 +700,95 @@ export default function OrdersManagement() {
                     <p className="text-xs text-dark-500 mb-1">Charge</p>
                     <p className="text-sm font-bold text-primary-600">{format(selectedOrder.charge || 0)}</p>
                   </div>
+                  {/* Refund Information - Admin Only */}
+                  {selectedOrder.refundIssued && selectedOrder.refundAmount && (
+                    <div className="col-span-2 p-4 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg border-2 border-purple-300 dark:border-purple-700 shadow-lg">
+                      <p className="text-sm font-bold text-purple-800 dark:text-purple-300 mb-4 flex items-center gap-2">
+                        💰 Refund Breakdown (Admin Only - Hidden from User)
+                      </p>
+                      <div className="space-y-3">
+                        {/* Section 1: Provider Real Cost */}
+                        <div className="p-3 bg-white dark:bg-dark-800/50 rounded-lg border border-blue-200 dark:border-blue-800 shadow-sm">
+                          <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-2">📦 Provider Service Cost (Real Price)</p>
+                          <div className="flex items-baseline justify-between">
+                            <span className="text-xs text-blue-600 dark:text-blue-400">Amount paid to provider:</span>
+                            <span className="text-lg font-bold text-blue-700 dark:text-blue-300">
+                              {selectedOrder.providerCost ? format(selectedOrder.providerCost) : 'Not available'}
+                            </span>
+                          </div>
+                          {!selectedOrder.providerCost && (
+                            <p className="text-[10px] text-orange-500 dark:text-orange-400 mt-1">
+                              ⚠️ Old order - provider cost not tracked
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Section 2: Refund Flow */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 bg-white dark:bg-dark-800/50 rounded-lg border border-green-200 dark:border-green-800 shadow-sm">
+                            <p className="text-xs font-semibold text-green-700 dark:text-green-400 mb-2">✅ Provider Refunded You</p>
+                            <div className="flex items-baseline justify-between mb-1">
+                              <span className="text-xs text-green-600 dark:text-green-400">Full refund:</span>
+                              <span className="text-base font-bold text-green-700 dark:text-green-300">{format(selectedOrder.charge || 0)}</span>
+                            </div>
+                            <p className="text-[10px] text-green-600 dark:text-green-500">Provider refunded 100%</p>
+                          </div>
+                          
+                          <div className="p-3 bg-white dark:bg-dark-800/50 rounded-lg border border-orange-200 dark:border-orange-800 shadow-sm">
+                            <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 mb-2">👤 User Received</p>
+                            <div className="flex items-baseline justify-between mb-1">
+                              <span className="text-xs text-orange-600 dark:text-orange-400">Refund given:</span>
+                              <span className="text-base font-bold text-orange-700 dark:text-orange-300">{format(selectedOrder.refundAmount)}</span>
+                            </div>
+                            <p className="text-[10px] text-orange-600 dark:text-orange-500">
+                              User got {Math.round((selectedOrder.refundAmount / selectedOrder.charge) * 100)}% 
+                              ({100 - Math.round((selectedOrder.refundAmount / selectedOrder.charge) * 100)}% fee hidden)
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Section 3: Your Profit */}
+                        <div className="p-4 bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 rounded-lg border-2 border-green-300 dark:border-green-700 shadow-md">
+                          <p className="text-xs font-bold text-green-800 dark:text-green-300 mb-2">💵 Your Total Profit on Refund</p>
+                          <div className="flex items-baseline justify-between mb-2">
+                            <span className="text-sm text-green-700 dark:text-green-400">Net profit:</span>
+                            <span className="text-2xl font-bold text-green-700 dark:text-green-300">
+                              {format((selectedOrder.charge || 0) - (selectedOrder.refundAmount || 0))}
+                            </span>
+                          </div>
+                          {selectedOrder.providerCost && (
+                            <div className="text-[10px] text-green-700 dark:text-green-400 space-y-1 bg-white/50 dark:bg-black/20 p-2 rounded">
+                              <div className="flex justify-between">
+                                <span>• Website charge to user:</span>
+                                <span className="font-semibold">{format(selectedOrder.charge || 0)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>• Provider real cost:</span>
+                                <span className="font-semibold">-{format(selectedOrder.providerCost)}</span>
+                              </div>
+                              <div className="flex justify-between border-t border-green-300 dark:border-green-700 pt-1">
+                                <span className="font-semibold">Service markup profit:</span>
+                                <span className="font-bold">{format((selectedOrder.charge || 0) - (selectedOrder.providerCost || 0))}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>• User refund given:</span>
+                                <span className="font-semibold">-{format(selectedOrder.refundAmount)}</span>
+                              </div>
+                              <div className="flex justify-between border-t border-green-300 dark:border-green-700 pt-1 mt-1">
+                                <span className="font-semibold">11% refund fee kept:</span>
+                                <span className="font-bold">{format((selectedOrder.charge || 0) - (selectedOrder.refundAmount || 0))}</span>
+                              </div>
+                            </div>
+                          )}
+                          {!selectedOrder.providerCost && (
+                            <p className="text-[10px] text-green-700 dark:text-green-400">
+                              = 11% processing fee kept from refund
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-dark-500 mb-1">Target Link</p>
@@ -663,7 +820,8 @@ export default function OrdersManagement() {
                     ))}
                   </div>
                 </div>
-                {selectedOrder.status !== 'refunded' && !selectedOrder.refundIssued && (
+                {/* Manual Refund Button - Show for all orders except already refunded */}
+                {!selectedOrder.refundIssued && (
                   <div className="pt-4 border-t border-dark-200 dark:border-dark-700">
                     <button 
                       onClick={() => {
@@ -673,8 +831,13 @@ export default function OrdersManagement() {
                       disabled={updating}
                       className="w-full btn-secondary text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center justify-center gap-2">
                       <FiDollarSign />
-                      {updating ? 'Processing...' : 'Refund Order'}
+                      {updating ? 'Processing...' : 'Manual Refund (Override Auto-Refund)'}
                     </button>
+                    {(selectedOrder.status === 'cancelled' || selectedOrder.status === 'partial') && (
+                      <p className="text-xs text-orange-500 dark:text-orange-400 mt-2 text-center">
+                        ⚠️ No auto-refund for {selectedOrder.status} orders. Use this button if provider refunded you.
+                      </p>
+                    )}
                   </div>
                 )}
                 <div className="pt-4 border-t border-dark-200 dark:border-dark-700 text-xs text-dark-500 space-y-1">

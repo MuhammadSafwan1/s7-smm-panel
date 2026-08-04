@@ -10,13 +10,16 @@ import {
   FiCheckCircle, 
   FiXCircle,
   FiGlobe,
-  FiMail
+  FiMail,
+  FiDollarSign
 } from 'react-icons/fi';
 import { Spinner } from '@/components/common/Loader';
 import toast from 'react-hot-toast';
 import { cachedQuery, invalidateCache } from '@/lib/cache';
+import { useCurrency } from '@/context/CurrencyContext';
 
 export default function ProvidersPage() {
+  const { currency, rates, currentCurrency } = useCurrency();
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -30,6 +33,7 @@ export default function ProvidersPage() {
   const [importingServices, setImportingServices] = useState(false);
   const [platforms, setPlatforms] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [balances, setBalances] = useState({});
 
   const PROXY = 'https://smm-proxy.ms8347750.workers.dev';
 
@@ -70,9 +74,32 @@ export default function ProvidersPage() {
         ...doc.data(),
       }));
       setProviders(providersList);
+      providersList.forEach(p => fetchBalance(p));
     } catch (error) {
       console.error('Failed to load providers:', error);
       setProviders([]);
+    }
+  };
+
+  const fetchBalance = async (provider) => {
+    if (!provider.apiUrl || !provider.apiKey) return;
+    setBalances(prev => ({ ...prev, [provider.id]: { ...prev[provider.id], loading: true, error: null } }));
+    try {
+      const res = await fetch(PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiUrl: provider.apiUrl, apiKey: provider.apiKey, action: 'balance' }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json();
+      let balance = 0;
+      if (typeof result === 'number') balance = result;
+      else if (result.balance !== undefined) balance = parseFloat(result.balance) || 0;
+      else if (result.data?.balance !== undefined) balance = parseFloat(result.data.balance) || 0;
+      else if (result.funds !== undefined) balance = parseFloat(result.funds) || 0;
+      setBalances(prev => ({ ...prev, [provider.id]: { balance, loading: false, error: null } }));
+    } catch (e) {
+      setBalances(prev => ({ ...prev, [provider.id]: { balance: 0, loading: false, error: e.message } }));
     }
   };
 
@@ -151,6 +178,7 @@ export default function ProvidersPage() {
       
       invalidateCache('collection:services');
       invalidateCache('collection:providers');
+      invalidateCache('services:');
       fetchProviders();
     } catch (error) {
       toast.error(error.message || 'Failed to delete provider', { id: loadingToast });
@@ -311,7 +339,7 @@ export default function ProvidersPage() {
       const servicesToImport = fetchedServices.filter(s => selectedServices.includes(s.service));
       
       // Get highest existing service ID
-      const existingServicesSnap = await getDocs(collection(db, 'services'));
+      const existingServicesSnap = await cachedQuery('collection:services', () => getDocs(collection(db, 'services')), 30000);
       const existingServiceIds = existingServicesSnap.docs.map(d => parseInt(d.data().serviceId) || 0);
       let nextServiceId = existingServiceIds.length > 0 ? Math.max(...existingServiceIds) + 1 : 1;
 
@@ -341,7 +369,7 @@ export default function ProvidersPage() {
             minQuantity: parseInt(svc.min || 100),
             maxQuantity: parseInt(svc.max || 100000),
             avgTime: '1-6 Hours',
-            description: svc.description || '',
+            description: svc.description || svc.desc || svc.details || svc.note || svc.notes || svc.instructions || svc.full_description || svc.service_description || svc.sdesc || svc.short_desc || svc.service_desc || svc.long_desc || '',
             platformId: platforms[0]?.id || '', // Default to first platform
             categoryId: categories[0]?.id || '', // Default to first category
             customCommentsRequired: false,
@@ -478,6 +506,22 @@ export default function ProvidersPage() {
                     <span className="truncate">{provider.supportEmail}</span>
                   </div>
                 )}
+              </div>
+
+              {/* Balance */}
+              <div className="mb-4 p-3 rounded-xl bg-dark-50 dark:bg-dark-800/50 border border-dark-200 dark:border-dark-700">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-dark-500 dark:text-dark-400">Balance</span>
+                  {balances[provider.id]?.loading ? (
+                    <div className="w-4 h-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                  ) : balances[provider.id]?.error ? (
+                    <span className="text-xs text-red-500" title={balances[provider.id].error}>Failed</span>
+                  ) : (
+                    <span className="font-bold text-primary-600 dark:text-primary-400">
+                      {currentCurrency.symbol}{((balances[provider.id]?.balance || 0) * (rates[currency] || 1)).toFixed(2)}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Actions */}

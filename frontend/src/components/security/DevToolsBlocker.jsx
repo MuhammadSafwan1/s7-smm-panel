@@ -24,7 +24,7 @@ export default function DevToolsBlocker() {
     }
     const check = async () => {
       try {
-        const snap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
+        const snap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 120000);
         if (snap.exists()) {
           const emails = snap.data().whitelistedEmails || [];
           const current = (user.email || '').trim().toLowerCase();

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { cachedQuery } from '@/lib/cache';
 import { FiVideo, FiSearch, FiFilter } from 'react-icons/fi';
 
 export default function HelpPage() {
@@ -24,9 +25,11 @@ export default function HelpPage() {
 
   const fetchVideos = async () => {
     try {
-      const q = query(collection(db, 'helpVideos'), orderBy('sortOrder', 'asc'));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data = await cachedQuery('help:videos', async () => {
+        const q = query(collection(db, 'helpVideos'), orderBy('sortOrder', 'asc'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      });
       setVideos(data);
       setFilteredVideos(data);
     } catch (error) {

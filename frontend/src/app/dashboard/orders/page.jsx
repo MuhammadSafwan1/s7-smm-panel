@@ -4,10 +4,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrency } from '@/context/CurrencyContext';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, query, where, doc, getDoc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, updateDoc, addDoc, onSnapshot } from 'firebase/firestore';
 import Link from 'next/link';
 import { Spinner, PageLoader } from '@/components/common/Loader';
-import { FiPackage, FiArrowLeft, FiClock, FiCheckCircle, FiXCircle, FiRefreshCw, FiExternalLink, FiRefreshCcw, FiSearch, FiFilter, FiX } from 'react-icons/fi';
+import { FiPackage, FiArrowLeft, FiClock, FiCheckCircle, FiXCircle, FiRefreshCw, FiExternalLink, FiRefreshCcw, FiSearch, FiFilter } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 
@@ -58,18 +58,51 @@ export default function OrdersPage() {
   const [hasMore, setHasMore] = useState(true);
   const ORDERS_PER_PAGE = 10;
   const syncIntervalRef = useRef(null);
-  const providerCacheRef = useRef({});
   const observerRef = useRef(null);
   const loadMoreRef = useRef(null);
+  const ordersRef = useRef([]);
+  const syncedOnceRef = useRef(false);
+  const unsubOrdersRef = useRef(null);
 
   useEffect(() => {
     if (user) {
-      fetchOrders();
+      // 🔴 REALTIME orders listener - initial load + live status updates
+      const ordersQuery = query(collection(db, 'orders'), where('userId', '==', user.uid));
+      unsubOrdersRef.current = onSnapshot(ordersQuery, (snap) => {
+        try {
+          const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          const filtered = applySmartFilter(allOrders);
+          setOrders(filtered);
+          setFilteredOrders(filtered);
+          ordersRef.current = filtered;
+          // Auto-sync with provider once after initial load
+          if (!syncedOnceRef.current) {
+            syncedOnceRef.current = true;
+            syncOrdersList(allOrders).then(synced => {
+              const sf = applySmartFilter(synced);
+              setOrders(sf);
+              setFilteredOrders(sf);
+              ordersRef.current = sf;
+            });
+          }
+        } catch (e) {
+          console.error('❌ Realtime orders error:', e);
+        } finally {
+          setOrdersLoading(false);
+        }
+      }, (err) => {
+        console.error('❌ Realtime orders listener error:', err);
+        setOrdersLoading(false);
+      });
+
       syncIntervalRef.current = setInterval(() => {
         syncActiveOrders();
       }, SYNC_INTERVAL);
     }
-    return () => { if (syncIntervalRef.current) clearInterval(syncIntervalRef.current); };
+    return () => {
+      if (unsubOrdersRef.current) unsubOrdersRef.current();
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+    };
   }, [user]);
 
   useEffect(() => { filterOrders(); }, [searchTerm, statusFilter, orders]);
@@ -103,50 +136,76 @@ export default function OrdersPage() {
     };
   }, [hasMore, ordersLoading]);
 
-  const getProvider = async (providerId) => {
-    if (!providerId) return null;
-    if (providerCacheRef.current[providerId]) return providerCacheRef.current[providerId];
-    const snap = await getDoc(doc(db, 'providers', providerId));
-    if (snap.exists()) {
-      providerCacheRef.current[providerId] = snap.data();
-      return snap.data();
+  // 🔐 Provider apiKeys are admin-only in Firestore — call the provider via the
+  // Cloudflare worker, which verifies the user's ID token server-side.
+  const callProvider = async (order, action, extra = {}) => {
+    if (!order.providerId) return null;
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, providerId: order.providerId, action, ...extra }),
+      });
+      if (res.status === 429) return { rateLimited: true };
+      return await res.json();
+    } catch (e) {
+      console.warn('Provider call error:', e.message);
+      return null;
     }
-    return null;
   };
 
-  const fetchOrders = async () => {
-    setOrdersLoading(true);
-    try {
-      const snap = await getDocs(query(collection(db, 'orders'), where('userId', '==', user.uid)));
-      const list = snap.docs.map(d => ({ 
-        id: d.id, 
-        ...d.data() 
-      }))
-        .sort((a, b) => {
-          const aT = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-          const bT = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-          return bT - aT;
-        });
-      setOrders(list);
-      setFilteredOrders(list);
-      const synced = await syncOrdersList(list);
-      setOrders(synced);
-      setFilteredOrders(synced);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setOrdersLoading(false);
-    }
+  // 🚀 Smart Date Filtering Based on Refill Period:
+  // - 365-day refill orders: Keep for 365 days
+  // - 30-day refill orders: Keep for 30 days
+  // - No refill orders: Keep for 7 days only
+  const applySmartFilter = (allOrders) => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const oneYearAgo = new Date();
+    oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+    
+    return allOrders.filter(order => {
+      const orderDate = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt || 0);
+      
+      // Get refill days from order (set when order was placed)
+      const refillDays = order.refillDays || order.refillPeriodDays || 0;
+      
+      // If no refill support, keep only 7 days
+      if (!order.refillSupported && !order.hasRefill) {
+        return orderDate >= sevenDaysAgo;
+      }
+      
+      // If refill supported:
+      // - 365 days or more: Keep for 365 days
+      // - 30-364 days: Keep for that period
+      // - Less than 30 days: Keep for 7 days (safety)
+      if (refillDays >= 365) {
+        return orderDate >= oneYearAgo;  // 365+ days refill
+      } else if (refillDays >= 30) {
+        const customCutoff = new Date();
+        customCutoff.setDate(customCutoff.getDate() - refillDays);
+        return orderDate >= customCutoff;  // Custom period (e.g., 30, 60, 90 days)
+      } else {
+        return orderDate >= sevenDaysAgo;  // Short refill or no period = 7 days
+      }
+    }).sort((a, b) => {
+      const aT = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const bT = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+      return bT - aT;
+    });
   };
 
   const syncActiveOrders = async () => {
     setSyncing(true);
     try {
-      setOrders(prev => prev.map(o => o));
-      const current = [...orders];
+      const current = [...ordersRef.current];
       const synced = await syncOrdersList(current);
-      setOrders(synced);
-      setFilteredOrders(synced);
+      const sf = applySmartFilter(synced);
+      setOrders(sf);
+      setFilteredOrders(sf);
+      ordersRef.current = sf;
     } finally {
       setSyncing(false);
     }
@@ -157,12 +216,8 @@ export default function OrdersPage() {
     if (statusFilter !== 'all') f = f.filter(o => o.status === statusFilter);
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
-      f = f.filter(o =>
-        o.id.toLowerCase().includes(q) ||
-        o.serviceName?.toLowerCase().includes(q) ||
-        o.platformName?.toLowerCase().includes(q) ||
-        o.link?.toLowerCase().includes(q)
-      );
+      // 🔍 Search ONLY by Order ID
+      f = f.filter(o => o.id.toLowerCase().includes(q));
     }
     setFilteredOrders(f);
   };
@@ -181,20 +236,11 @@ export default function OrdersPage() {
 
   const syncSingleOrder = async (order) => {
     try {
-      const provider = await getProvider(order.providerId);
-      if (!provider) return order;
-      const res = await fetch(PROXY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiUrl: provider.apiUrl, apiKey: provider.apiKey, action: 'status', order: order.providerOrderId }),
-      });
-      
-      if (res.status === 429) {
-        console.warn('Rate limited by proxy — skipping sync for this order');
+      const result = await callProvider(order, 'status', { order: order.providerOrderId });
+      if (!result || result.rateLimited) {
+        if (result?.rateLimited) console.warn('Rate limited by proxy — skipping sync for this order');
         return order;
       }
-      
-      const result = await res.json();
       if (!result.success || !result.data) return order;
 
       const d = result.data;
@@ -210,8 +256,9 @@ export default function OrdersPage() {
           updateData.completedAt = new Date();
         }
 
-        if (newStatus === 'partial' && order.charge && !order.refundIssued) {
-          const refundAmount = parseFloat((order.charge * 0.98 * (remains / parseInt(order.quantity))).toFixed(4));
+        // ✅ AUTO-REFUND: ONLY when provider refunded admin (11% fee deduction)
+        if (newStatus === 'refunded' && order.charge && !order.refundIssued) {
+          const refundAmount = parseFloat((order.charge * 0.89).toFixed(4)); // 89% (11% fee)
           if (refundAmount > 0) {
             const userSnap = await getDoc(doc(db, 'users', order.userId));
             if (userSnap.exists()) {
@@ -219,7 +266,7 @@ export default function OrdersPage() {
               await updateDoc(doc(db, 'users', order.userId), { walletBalance: newBal });
               await addDoc(collection(db, 'transactions'), {
                 userId: order.userId, orderId: order.id, type: 'refund',
-                amount: refundAmount, description: `Partial refund (2% fee) for order #${order.id.substring(0, 8)}`,
+                amount: refundAmount, description: `Refund for order #${order.id.substring(0, 8)} (11% fee deducted)`,
                 createdAt: new Date(),
               });
             }
@@ -228,8 +275,14 @@ export default function OrdersPage() {
           }
         }
 
-        if ((newStatus === 'cancelled' || newStatus === 'refunded') && order.charge && !order.refundIssued) {
-          const refundAmount = parseFloat((order.charge * 0.98).toFixed(4));
+        // ❌ NO AUTO-REFUND for "cancelled" — provider didn't refund admin, so user gets nothing
+        if (newStatus === 'cancelled' && !order.refundIssued) {
+          // Cancelled = Order cancelled but provider did NOT refund
+        }
+
+        // ✅ AUTO-REFUND: Partial orders - refund unfulfilled portion (11% fee)
+        if (newStatus === 'partial' && order.charge && !order.refundIssued) {
+          const refundAmount = parseFloat((order.charge * 0.89 * (remains / parseInt(order.quantity))).toFixed(4)); // 89% (11% fee)
           if (refundAmount > 0) {
             const userSnap = await getDoc(doc(db, 'users', order.userId));
             if (userSnap.exists()) {
@@ -237,7 +290,7 @@ export default function OrdersPage() {
               await updateDoc(doc(db, 'users', order.userId), { walletBalance: newBal });
               await addDoc(collection(db, 'transactions'), {
                 userId: order.userId, orderId: order.id, type: 'refund',
-                amount: refundAmount, description: `Cancelled refund (2% fee deducted) for order #${order.id.substring(0, 8)}`,
+                amount: refundAmount, description: `Partial refund for order #${order.id.substring(0, 8)} (11% fee deducted)`,
                 createdAt: new Date(),
               });
             }
@@ -267,29 +320,11 @@ export default function OrdersPage() {
     setActionLoading(order.id + '-cancel');
     
     try {
-      const provider = await getProvider(order.providerId);
+      const result = await callProvider(order, 'cancel', { orders: order.providerOrderId });
       
-      if (!provider) {
-        toast.error('Cancel Failed: Service temporarily unavailable');
-        throw new Error('Service not found');
-      }
-
-      const res = await fetch(PROXY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          apiUrl: provider.apiUrl, 
-          apiKey: provider.apiKey, 
-          action: 'cancel', 
-          orders: order.providerOrderId 
-        }),
-      });
-      
-      const result = await res.json();
-      
-      if (res.status === 429) {
-        toast.error('Too many requests. Please wait a minute and try again.');
-        throw new Error('Too many requests');
+      if (!result || result.rateLimited) {
+        toast.error(result?.rateLimited ? 'Too many requests. Please wait a minute and try again.' : 'Cancel Failed: Service temporarily unavailable');
+        throw new Error('Rate limited');
       }
 
       const cancelData = Array.isArray(result.data) ? result.data[0] : result.data;
@@ -302,9 +337,9 @@ export default function OrdersPage() {
           updatedAt: new Date(),
         });
         
-        toast.success('Cancel request sent! Waiting for provider confirmation.');
+        toast.success('Cancel request sent! Waiting for confirmation.');
         
-        await fetchOrders();
+        // Realtime listener updates the list automatically
         setSelectedOrder(null);
       } else {
         const errorMsg = cancelData?.error || 'Cancellation request was not accepted';
@@ -331,30 +366,12 @@ export default function OrdersPage() {
     setActionLoading(order.id + '-refill');
     
     try {
-      const provider = await getProvider(order.providerId);
+      const result = await callProvider(order, 'refill', { order: order.providerOrderId });
       
-      if (!provider) {
-        toast.error('Refill Failed: Service not available');
-        throw new Error('Service not available');
-      }
-      
-      const res = await fetch(PROXY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          apiUrl: provider.apiUrl, 
-          apiKey: provider.apiKey, 
-          action: 'refill', 
-          order: order.providerOrderId 
-        }),
-      });
-      
-      if (res.status === 429) {
-        toast.error('Too many requests. Please wait and try again.');
+      if (!result || result.rateLimited) {
+        toast.error(result?.rateLimited ? 'Too many requests. Please wait and try again.' : 'Refill Failed: Service not available');
         throw new Error('Rate limited');
       }
-      
-      const result = await res.json();
       
       if (result.success && !result.data?.error) {
         await updateDoc(doc(db, 'orders', order.id), {
@@ -365,7 +382,7 @@ export default function OrdersPage() {
         });
         
         toast.success('Refill Started! Your order is being processed.');
-        await fetchOrders();
+        // Realtime listener updates the list automatically
       } else {
         const errorMsg = result.data?.error || result.error || 'Refill request declined';
         toast.error(`Refill Failed: ${errorMsg}`);
@@ -492,7 +509,7 @@ export default function OrdersPage() {
                     {displayedOrders.map(order => {
                       const status = getStatus(order.status);
                       const StatusIcon = status.icon;
-                      const canCancel = order.cancelSupported && order.providerOrderId && order.providerId && !order.cancelRequested && ['pending', 'processing'].includes(order.status);
+                      const canCancel = order.cancelSupported && order.providerOrderId && order.providerId && !order.cancelRequested && !['cancel_requested', 'cancelled', 'refunded', 'completed', 'failed'].includes(order.status);
                       const canRefill = (() => {
                         if (!order.refillSupported || !order.providerOrderId || !order.providerId) return false;
                         if (order.status !== 'completed') return false;
@@ -558,7 +575,7 @@ export default function OrdersPage() {
               {displayedOrders.map(order => {
                 const status = getStatus(order.status);
                 const StatusIcon = status.icon;
-                const canCancel = order.cancelSupported && order.providerOrderId && order.providerId && !order.cancelRequested && ['pending', 'processing'].includes(order.status);
+                const canCancel = order.cancelSupported && order.providerOrderId && order.providerId && !order.cancelRequested && !['cancel_requested', 'cancelled', 'refunded', 'completed', 'failed'].includes(order.status);
                 const canRefill = (() => {
                   if (!order.refillSupported || !order.providerOrderId || !order.providerId) return false;
                   if (order.status !== 'completed') return false;
@@ -631,7 +648,7 @@ export default function OrdersPage() {
                     <p className="text-sm text-gray-400 dark:text-gray-500">Order #{selectedOrder.id.substring(0, 8)}</p>
                   </div>
                   <button onClick={() => setSelectedOrder(null)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-[#253a5e] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
-                    <FiX size={16} />
+                    <FiXCircle size={16} />
                   </button>
                 </div>
                 <div className="space-y-4">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -19,77 +19,19 @@ import {
 
 export default function RightSidebar() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, is2FAVerified } = useAuth(); // 🔒 Get 2FA verified state
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredItem, setHoveredItem] = useState(null);
-  const [isVerified, setIsVerified] = useState(false);
-  const [isApp2FAVerified, setIsApp2FAVerified] = useState(false);
-
-  // Check verification status (both Cloudflare and App 2FA)
-  useEffect(() => {
-    const checkVerification = () => {
-      // Check Cloudflare verification
-      const verified = localStorage.getItem('cf_verified') || sessionStorage.getItem('cf_verified');
-      const verifiedAt = localStorage.getItem('cf_verified_at') || sessionStorage.getItem('cf_verified_at');
-      
-      if (verified === 'true' && verifiedAt) {
-        const elapsed = Date.now() - parseInt(verifiedAt);
-        if (elapsed < 30 * 60 * 1000) { // 30 minutes
-          setIsVerified(true);
-          localStorage.setItem('cf_verified', 'true');
-          localStorage.setItem('cf_verified_at', verifiedAt);
-          sessionStorage.setItem('cf_verified', 'true');
-          sessionStorage.setItem('cf_verified_at', verifiedAt);
-        } else {
-          localStorage.removeItem('cf_verified');
-          localStorage.removeItem('cf_verified_at');
-          sessionStorage.removeItem('cf_verified');
-          sessionStorage.removeItem('cf_verified_at');
-          setIsVerified(false);
-        }
-      } else {
-        setIsVerified(false);
-      }
-
-      // Check app 2FA verification
-      const app2FAVerified = localStorage.getItem('app_2fa_verified') || sessionStorage.getItem('app_2fa_verified');
-      const app2FAVerifiedAt = localStorage.getItem('app_2fa_verified_at') || sessionStorage.getItem('app_2fa_verified_at');
-      
-      if (app2FAVerified === 'true' && app2FAVerifiedAt) {
-        const elapsed = Date.now() - parseInt(app2FAVerifiedAt);
-        if (elapsed < 24 * 60 * 60 * 1000) { // 24 hours
-          setIsApp2FAVerified(true);
-          localStorage.setItem('app_2fa_verified', 'true');
-          localStorage.setItem('app_2fa_verified_at', app2FAVerifiedAt);
-          sessionStorage.setItem('app_2fa_verified', 'true');
-          sessionStorage.setItem('app_2fa_verified_at', app2FAVerifiedAt);
-        } else {
-          localStorage.removeItem('app_2fa_verified');
-          localStorage.removeItem('app_2fa_verified_at');
-          sessionStorage.removeItem('app_2fa_verified');
-          sessionStorage.removeItem('app_2fa_verified_at');
-          setIsApp2FAVerified(false);
-        }
-      } else {
-        setIsApp2FAVerified(false);
-      }
-    };
-
-    checkVerification();
-    const interval = setInterval(checkVerification, 500);
-    
-    return () => clearInterval(interval);
-  }, []);
 
   // Navigation items
   const navigationItems = [
     { name: 'Home', path: '/', icon: FiHome, emoji: '🏠', color: 'from-blue-400 to-blue-600', show: true },
-    { name: 'Dashboard', path: '/dashboard', icon: FiUser, emoji: '📊', color: 'from-purple-400 to-purple-600', show: user && isVerified && isApp2FAVerified },
-    { name: 'Add Funds', path: '/dashboard/add-funds', icon: FiDollarSign, emoji: '💰', color: 'from-green-400 to-green-600', show: user && isVerified && isApp2FAVerified },
-    { name: 'Orders', path: '/dashboard/orders', icon: FiPackage, emoji: '📦', color: 'from-orange-400 to-orange-600', show: user && isVerified && isApp2FAVerified },
-    { name: 'Services', path: '/dashboard/services', icon: FiZap, emoji: '⚡', color: 'from-yellow-400 to-yellow-600', show: user && isVerified && isApp2FAVerified },
-    { name: 'Transactions', path: '/dashboard/transactions', icon: FiCreditCard, emoji: '💳', color: 'from-pink-400 to-pink-600', show: user && isVerified && isApp2FAVerified },
-    { name: 'FAQs', path: '/policies', icon: FiHelpCircle, emoji: '❓', color: 'from-teal-400 to-teal-600', show: true },
+    { name: 'Dashboard', path: '/dashboard', icon: FiUser, emoji: '📊', color: 'from-purple-400 to-purple-600', show: user && user.emailVerified && is2FAVerified }, // 🔒 Check 2FA
+    { name: 'Add Funds', path: '/dashboard/add-funds', icon: FiDollarSign, emoji: '💰', color: 'from-green-400 to-green-600', show: user && user.emailVerified && is2FAVerified }, // 🔒 Check 2FA
+    { name: 'Orders', path: '/dashboard/orders', icon: FiPackage, emoji: '📦', color: 'from-orange-400 to-orange-600', show: user && user.emailVerified && is2FAVerified }, // 🔒 Check 2FA
+    { name: 'Services', path: '/dashboard/services', icon: FiZap, emoji: '⚡', color: 'from-yellow-400 to-yellow-600', show: user && user.emailVerified && is2FAVerified }, // 🔒 Check 2FA
+    { name: 'Transactions', path: '/dashboard/transactions', icon: FiCreditCard, emoji: '💳', color: 'from-pink-400 to-pink-600', show: user && user.emailVerified && is2FAVerified }, // 🔒 Check 2FA
+    { name: 'Terms', path: '/policies', icon: FiHelpCircle, emoji: '📋', color: 'from-teal-400 to-teal-600', show: true },
     { name: 'Help', path: '/help', icon: FiLifeBuoy, emoji: '🆘', color: 'from-red-400 to-red-600', show: true }
   ];
 

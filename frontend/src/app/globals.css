@@ -273,6 +273,53 @@
     border-color: rgba(42, 74, 120, 0.35);
   }
 
+  /* Hide browser's password manager/autofill icons - AGGRESSIVE APPROACH */
+  /* Microsoft Edge & IE */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Chrome, Safari, Edge (Chromium) */
+  input[type="password"]::-webkit-contacts-auto-fill-button,
+  input[type="password"]::-webkit-credentials-auto-fill-button,
+  input[type="password"]::-webkit-textfield-decoration-container {
+    visibility: hidden !important;
+    display: none !important;
+    pointer-events: none !important;
+    position: absolute !important;
+    height: 0 !important;
+    width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    opacity: 0 !important;
+  }
+
+  input[type="text"]::-webkit-contacts-auto-fill-button,
+  input[type="text"]::-webkit-credentials-auto-fill-button,
+  input[type="text"]::-webkit-textfield-decoration-container {
+    visibility: hidden !important;
+    display: none !important;
+    pointer-events: none !important;
+    position: absolute !important;
+    height: 0 !important;
+    width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    opacity: 0 !important;
+  }
+
+  /* Hide all webkit inner buttons */
+  input::-webkit-inner-spin-button,
+  input::-webkit-calendar-picker-indicator,
+  input::-webkit-clear-button,
+  input::-webkit-search-cancel-button {
+    display: none !important;
+    visibility: hidden !important;
+    -webkit-appearance: none !important;
+  }
+
   .input-error {
     @apply border-red-500 focus:border-red-500 focus:ring-red-500/20;
   }

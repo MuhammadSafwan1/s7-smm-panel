@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, increment } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
-import { FiPlus, FiEdit2, FiTrash2, FiImage, FiX } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiImage, FiXCircle } from 'react-icons/fi';
 import { Spinner } from '@/components/common/Loader';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
@@ -38,7 +38,7 @@ export default function AccountsManagement() {
   const fetchData = async () => {
     try {
       const [accountsSnapshot, categoriesSnapshot] = await Promise.all([
-        getDocs(collection(db, 'accounts')),
+        cachedQuery('collection:accounts', () => getDocs(collection(db, 'accounts')), 30000),
         cachedQuery('collection:categories', () => getDocs(collection(db, 'categories')), 30000),
       ]);
 
@@ -581,7 +581,7 @@ export default function AccountsManagement() {
                               className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 flex-shrink-0"
                               title="Remove"
                             >
-                              <FiX />
+                              <FiXCircle />
                             </button>
                           )}
                         </div>
@@ -651,7 +651,7 @@ export default function AccountsManagement() {
                             onClick={() => removeImageUrlField(index)}
                             className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                           >
-                            <FiX className="text-sm" />
+                            <FiXCircle className="text-sm" />
                           </button>
                         </div>
                       ))}

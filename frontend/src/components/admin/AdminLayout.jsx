@@ -28,7 +28,7 @@ const adminNavItems = {
     { href: '/s7bHG74TY09161NJASKLPW/services',   label: 'Services',   icon: FiShoppingBag },
     { href: '/s7bHG74TY09161NJASKLPW/orders',     label: 'Orders',     icon: FiShoppingBag },
     { href: '/s7bHG74TY09161NJASKLPW/users',      label: 'Users',      icon: FiUsers },
-    { href: '/s7bHG74TY09161NJASKLPW/policies',   label: 'FAQs',   icon: FiMessageSquare },
+    { href: '/s7bHG74TY09161NJASKLPW/policies',   label: 'Terms',   icon: FiMessageSquare },
     { href: '/s7bHG74TY09161NJASKLPW/support',    label: 'Support',    icon: FiMessageSquare },
     { href: '/s7bHG74TY09161NJASKLPW/payment-methods', label: 'Payment Methods', icon: FiDollarSign },
     { href: '/s7bHG74TY09161NJASKLPW/payment-verification', label: 'Verify Payments', icon: FiDollarSign },
@@ -48,8 +48,8 @@ export default function AdminLayout({ children }) {
   const [unresolvedTickets, setUnresolvedTickets] = useState(0);
   const [pendingOrders, setPendingOrders] = useState(0);
 
-  // Session timeout (30 minutes inactivity)
-  const SESSION_TIMEOUT = 12 * 60 * 60 * 1000; // 12 hours
+  // Session timeout (24 hours since login)
+  const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
 
   const hasVerified = useRef(false);
 
@@ -171,7 +171,7 @@ export default function AdminLayout({ children }) {
           userData = { email: user.email, role: 'admin' };
         }
 
-        // Check admin session exists
+        // Check admin session exists and expiry
         const adminSession = localStorage.getItem('adminSession');
         if (!adminSession) {
           // Create session if missing (for direct URL access)
@@ -180,9 +180,25 @@ export default function AdminLayout({ children }) {
             email: user.email,
             role: isOwner ? 'owner' : 'editor',
             loginTime: new Date().toISOString(),
+            expiryTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours from now
             method: 'google'
           };
           localStorage.setItem('adminSession', JSON.stringify(newSession));
+        } else {
+          // Check if session expired (24 hours)
+          const session = JSON.parse(adminSession);
+          const loginTime = new Date(session.loginTime).getTime();
+          const now = Date.now();
+          const hoursSinceLogin = (now - loginTime) / (1000 * 60 * 60);
+          
+          if (hoursSinceLogin >= 24) {
+            toast.error('Admin session expired (24 hours). Please login again.');
+            localStorage.removeItem('adminSession');
+            await auth.signOut();
+            router.push('/s7bHG74TY09161NJASKLPW/s7-secure-access-2024');
+            setChecking(false);
+            return;
+          }
         }
 
         // Grant access
@@ -242,10 +258,24 @@ export default function AdminLayout({ children }) {
       clearTimeout(sessionTimeout);
     }
 
+    // Check session expiry every minute
     const timeout = setTimeout(() => {
-      toast.error('Session expired due to inactivity');
-      handleAdminLogout();
-    }, SESSION_TIMEOUT);
+      const adminSession = localStorage.getItem('adminSession');
+      if (adminSession) {
+        const session = JSON.parse(adminSession);
+        const loginTime = new Date(session.loginTime).getTime();
+        const now = Date.now();
+        const hoursSinceLogin = (now - loginTime) / (1000 * 60 * 60);
+        
+        if (hoursSinceLogin >= 24) {
+          toast.error('Admin session expired (24 hours). Please login again.');
+          handleAdminLogout();
+        } else {
+          // Check again in 1 minute
+          resetSessionTimeout();
+        }
+      }
+    }, 60000); // Check every 1 minute
 
     setSessionTimeout(timeout);
   };

@@ -4,7 +4,8 @@ import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { db } from '@/firebase/firestore';
-import { collection, getDocs, query, where, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, getDoc, getCountFromServer, limit, onSnapshot } from 'firebase/firestore';
+import { cachedQuery } from '@/lib/cache';
 import { useAuth } from '@/context/AuthContext';
 import { 
   FiShield, 
@@ -95,8 +96,8 @@ function HomePageContent() {
   }, []);
 
   useEffect(() => {
-    // 🚀 ALWAYS fetch fresh data on page load (no persistent cache)
-    console.log('🚀 Page loaded - Fetching fresh data...');
+    // Load from cache on navigation, fetch fresh on refresh
+    console.log('🚀 Page loaded - Loading data...');
     fetchAllData();
   }, [retryCount]);
 
@@ -104,81 +105,48 @@ function HomePageContent() {
     console.log('📡 fetchAllData started...');
     setLoading(true);
     try {
-      // 🚀 OPTIMIZED: Fetch only necessary data
-      
-      // 1. Admin settings (1 read)
+      // 1. Admin settings (shared cache key)
       console.log('1️⃣ Fetching admin settings...');
-      const settingsDocRef = doc(db, 'siteSettings', 'general');
-      const settingsSnap = await getDoc(settingsDocRef);
-      let adminSettingsData = null;
-      if (settingsSnap.exists()) {
-        const data = settingsSnap.data();
-        adminSettingsData = {
-          adminName: data.adminName || 'MSF SMM PANEL',
-          adminDescription: data.adminDescription || '',
-          adminPhoto: data.adminPhoto || null
-        };
-        console.log('✅ Admin settings loaded:', adminSettingsData);
-      } else {
-        adminSettingsData = {
+      const adminSettingsData = await cachedQuery('siteSettings:general:data', async () => {
+        const settingsDocRef = doc(db, 'siteSettings', 'general');
+        const settingsSnap = await getDoc(settingsDocRef);
+        console.log('📄 Settings doc exists:', settingsSnap.exists());
+        if (settingsSnap.exists()) {
+          const data = settingsSnap.data();
+          console.log('📄 Raw settings data:', data);
+          const result = {
+            adminName: data.adminName || 'MSF SMM PANEL',
+            adminDescription: data.adminDescription || '',
+            adminPhoto: data.adminPhoto || null
+          };
+          console.log('📄 Processed settings:', result);
+          return result;
+        }
+        return {
           adminName: 'MSF SMM PANEL',
           adminDescription: 'Professional SMM Panel Services',
           adminPhoto: null
         };
-        console.log('⚠️ No admin settings found, using defaults');
-      }
+      });
+      console.log('✅ Admin settings loaded:', adminSettingsData);
 
-      // 2. Platforms (5-10 reads) - needed for homepage display
+      // 2. Platforms (shared cache key)
       console.log('2️⃣ Fetching platforms...');
-      const platformsSnap = await getDocs(
-        query(collection(db, 'platforms'), where('isActive', '==', true))
-      );
-      const platformsData = platformsSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      const platformsData = await cachedQuery('platforms:all', async () => {
+        const platformsSnap = await getDocs(
+          query(collection(db, 'platforms'), where('isActive', '==', true))
+        );
+        return platformsSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      });
       console.log(`✅ Loaded ${platformsData.length} platforms`);
-      setPlatforms(platformsData);
 
-      // 3. Stats counter (1 read instead of 100+)
-      console.log('3️⃣ Fetching stats counter...');
-      const statsDocRef = doc(db, 'stats', 'counters');
-      const statsSnap = await getDoc(statsDocRef);
-      
-      let statsData;
-      if (statsSnap.exists()) {
-        // Use pre-calculated stats
-        const data = statsSnap.data();
-        statsData = {
-          totalUsers: data.totalUsers || 0,
-          totalOrders: data.totalOrders || 0,
-          onlineUsers: data.onlineUsers || 0,
-          totalServices: data.totalServices || 0
-        };
-        console.log('✅ Stats loaded from Firestore:', statsData);
-      } else {
-        // Fallback: If stats doc doesn't exist, use default values
-        console.warn('⚠️ Stats counter not found. Run createStatsCounter.js script.');
-        statsData = {
-          totalUsers: 14,
-          totalOrders: 20,
-          onlineUsers: 0,
-          totalServices: 47
-        };
-        console.log('⚠️ Using fallback stats:', statsData);
-      }
-      
-      // Set stats state with the loaded data
-      setStats(statsData);
-
-      // 4. Top users - Lazy load (optional, can be removed)
-      // For now, leaving empty to save reads
-      setTopUsers([]);
-      
       setAdminSettings(adminSettingsData);
+      setPlatforms(platformsData);
       setDataLoaded(true);
-      
       console.log('🎉 All data loaded successfully!');
-
+      console.log('📸 Admin Settings:', adminSettingsData);
     } catch (error) {
       console.error('❌ Error loading homepage data:', error);
       setDataLoaded(false);
@@ -188,16 +156,102 @@ function HomePageContent() {
     }
   };
 
+  // 🔴 REALTIME: Top 10 users + live stats (total users, total orders, total services, online users)
+  // Counts come from the stats/counters doc (incremented on order placement & registration)
+  // + one-shot initial counts for services/online users
+  useEffect(() => {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+    // Initial counts (fresh on load)
+    const loadInitialCounts = async () => {
+      try {
+        const [usersC, ordersC, servicesC, onlineC] = await Promise.all([
+          getCountFromServer(collection(db, 'users')),
+          getCountFromServer(collection(db, 'orders')),
+          getCountFromServer(collection(db, 'services')),
+          getCountFromServer(query(collection(db, 'users'), where('lastSeen', '>=', fiveMinutesAgo))),
+        ]);
+        setStats(prev => ({
+          ...prev,
+          totalUsers: usersC.data().count,
+          totalOrders: ordersC.data().count,
+          totalServices: servicesC.data().count,
+          onlineUsers: onlineC.data().count,
+        }));
+      } catch (e) {
+        console.error('❌ Failed to load initial counts:', e);
+      }
+    };
+    loadInitialCounts();
+
+    // 🔴 REALTIME counters: total users + total orders update instantly
+    // (stats/counters doc is incremented on registration & order placement)
+    const countersUnsub = onSnapshot(doc(db, 'stats', 'counters'), snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setStats(prev => ({
+          ...prev,
+          totalUsers: d.totalUsers ?? prev.totalUsers,
+          totalOrders: d.totalOrders ?? prev.totalOrders,
+        }));
+      }
+    }, err => console.error('Counters listener error:', err));
+
+    // 🔴 REALTIME: Top 10 users (initial 30 docs, then only changed docs)
+    const topUsersQuery = query(collection(db, 'users'), orderBy('totalOrders', 'desc'), limit(30));
+    const topUsersUnsub = onSnapshot(topUsersQuery, snap => {
+      const list = snap.docs
+        .filter(d => {
+          const dta = d.data();
+          return !dta.banned && !dta.disabled && !dta.isDeleted;
+        })
+        .map(d => ({
+          id: d.id,
+          name: d.data().displayName || d.data().email?.split('@')[0] || 'User',
+          photoURL: d.data().photoURL || null,
+          orderCount: d.data().totalOrders || 0,
+        }))
+        .filter(u => u.orderCount > 0)
+        .slice(0, 10);
+      setTopUsers(list);
+    }, err => console.error('Top users listener error:', err));
+
+    return () => {
+      countersUnsub();
+      topUsersUnsub();
+    };
+  }, []);
+
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
     setLoading(true);
   };
 
   const features = [
-    { icon: FiZap, title: 'Instant Delivery', description: 'Orders start processing immediately after placement. Get results fast.' },
-    { icon: FiDollarSign, title: 'Affordable Prices', description: 'Competitive rates for all services. Best value in the market.' },
-    { icon: FiShield, title: 'Secure & Safe', description: 'All transactions are encrypted. Your data is protected.' },
-    { icon: FiHeadphones, title: '24/7 Support', description: 'Our support team is always available to help you.' },
+    { 
+      icon: '⚡', 
+      bgColor: 'from-yellow-400 to-orange-500',
+      title: 'Instant Delivery', 
+      description: 'Orders start processing immediately after placement. Get results fast.' 
+    },
+    { 
+      icon: '💰', 
+      bgColor: 'from-green-400 to-emerald-600',
+      title: 'Affordable Prices', 
+      description: 'Competitive rates for all services. Best value in the market.' 
+    },
+    { 
+      icon: '🔒', 
+      bgColor: 'from-blue-400 to-indigo-600',
+      title: 'Secure & Safe', 
+      description: 'All transactions are encrypted. Your data is protected.' 
+    },
+    { 
+      icon: '🎧', 
+      bgColor: 'from-purple-400 to-pink-500',
+      title: '24/7 Support', 
+      description: 'Our support team is always available to help you.' 
+    },
   ];
 
   return (
@@ -536,7 +590,7 @@ function HomePageContent() {
                     className="group bg-white dark:bg-[#1a2742] rounded-2xl p-6 text-center border border-gray-100 dark:border-[#253a5e] hover:shadow-xl transition-all duration-300 hover:-translate-y-1 glow-border glow-border-blue"
                   >
                     <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300"
-                      style={{ backgroundColor: '#274C75', boxShadow: '0 8px 20px -4px #274C7550' }}>
+                      style={{ backgroundColor: platform.color || '#274C75', boxShadow: `0 8px 20px -4px ${platform.color || '#274C75'}50` }}>
                       {platform.icon ? (
                         <img src={platform.icon} alt={platform.name} className="w-10 h-10 object-contain" />
                       ) : (
@@ -594,8 +648,8 @@ function HomePageContent() {
                 transition={{ duration: 0.4, delay: index * 0.1 }}
                 className="group bg-white dark:bg-[#1a2742] rounded-2xl p-6 text-center border border-gray-100 dark:border-[#253a5e] hover:shadow-xl transition-all duration-300 hover:-translate-y-1 glow-border glow-border-blue"
               >
-                <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-blue-600/30">
-                  <feature.icon className="text-white" size={22} />
+                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${feature.bgColor} flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-xl`}>
+                  <span className="text-4xl">{feature.icon}</span>
                 </div>
                 <h3 className="font-bold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                   {feature.title}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
+import { cachedQuery } from '@/lib/cache';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { FiClock, FiUser, FiMapPin, FiMonitor, FiCheckCircle, FiXCircle, FiFilter, FiDownload } from 'react-icons/fi';
 import { PageLoader } from '@/components/common/Loader';
@@ -45,7 +46,7 @@ export default function AccessLogsPage() {
         );
       }
 
-      const snapshot = await getDocs(logsQuery);
+      const snapshot = await cachedQuery(`collection:access-logs:filter:${filter || 'all'}`, () => getDocs(logsQuery));
       const logsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),

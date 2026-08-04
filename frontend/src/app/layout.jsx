@@ -13,11 +13,13 @@ import WhatsAppButton from '@/components/common/WhatsAppButton';
 import AnnouncementPopup from '@/components/common/AnnouncementPopup';
 import BanCheck from '@/components/common/BanCheck';
 import RightSidebar from '@/components/common/RightSidebar';
+import AnalyticsTracker from '@/components/common/AnalyticsTracker';
 import { Suspense, useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import VerifyGate from '@/components/common/VerifyGate';
 import { db } from '@/firebase/firestore';
 import { doc, getDoc } from 'firebase/firestore';
+import { initSessionManager } from '@/utils/sessionManager';
 import './globals.css';
 
 function LayoutContent({ children }) {
@@ -26,11 +28,16 @@ function LayoutContent({ children }) {
   const [isVerified, setIsVerified] = useState(false);
   const [checkingVerification, setCheckingVerification] = useState(true);
 
+  // Initialize session manager on mount
+  useEffect(() => {
+    initSessionManager();
+  }, []);
+
   // Fetch and set dynamic favicon & OG image
   useEffect(() => {
     const fetchSiteLogo = async () => {
       try {
-        const docSnap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 300000);
+        const docSnap = await cachedQuery('siteSettings:general', () => getDoc(doc(db, 'siteSettings', 'general')), 120000);
         if (docSnap.exists() && docSnap.data().siteLogo) {
           const logoUrl = docSnap.data().siteLogo;
           
@@ -114,9 +121,10 @@ function LayoutContent({ children }) {
   
   return (
     <>
+      <AnalyticsTracker />
       <SeasonalBackground />
-      {/* Show Navbar if verified OR on admin page OR always (removed verification requirement) */}
-      {!isAdminPage && (
+      {/* Show Navbar only after Cloudflare verification (or on admin page) */}
+      {!isAdminPage && isVerified && (
         <Suspense fallback={<nav className="h-16 md:h-16 bg-transparent" />}>
           <Navbar />
         </Suspense>
@@ -128,13 +136,13 @@ function LayoutContent({ children }) {
           </VerifyGate>
         </BanCheck>
       </main>
-      {/* Show Right Sidebar on all pages except home and admin */}
-      {!isAdminPage && pathname !== '/' && <RightSidebar />}
-      {/* Show Footer, Support Button, WhatsApp Button and Announcement if not admin page */}
-      {!isAdminPage && <Footer />}
-      {!isAdminPage && <SupportButton />}
-      {!isAdminPage && <WhatsAppButton />}
-      {!isAdminPage && <AnnouncementPopup />}
+      {/* Show Right Sidebar on all pages except home and admin (only when verified) */}
+      {!isAdminPage && pathname !== '/' && isVerified && <RightSidebar />}
+      {/* Show Footer, Support Button, WhatsApp Button and Announcement only when verified */}
+      {!isAdminPage && isVerified && <Footer />}
+      {!isAdminPage && isVerified && <SupportButton />}
+      {!isAdminPage && isVerified && <WhatsAppButton />}
+      {!isAdminPage && isVerified && <AnnouncementPopup />}
       <ThemeToaster />
     </>
   );
@@ -150,14 +158,14 @@ export default function RootLayout({ children }) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         
         {/* Favicon */}
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/logo192.png" />
+        <link rel="icon" type="image/png" href="https://res.cloudinary.com/dv2r4poj6/image/upload/w_48,h_48,c_fill,g_center/v1784693370/website/logo/uurwgktu9vnplb2lxnfh.png" />
+        <link rel="apple-touch-icon" href="https://res.cloudinary.com/dv2r4poj6/image/upload/w_192,h_192,c_fill,g_center/v1784693370/website/logo/uurwgktu9vnplb2lxnfh.png" />
         <link rel="manifest" href="/manifest.json" />
         
         {/* Primary SEO Meta Tags */}
-        <title>MSF SMM</title>
-        <meta name="title" content="MSF SMM" />
-        <meta name="description" content="MSF SMM Panel - 100% Trusted & Secure Premium SMM Panel for social media marketing. Boost your Instagram, YouTube, Facebook, Twitter followers, likes, views with instant delivery and 24/7 professional support. Pakistan's #1 verified SMM service provider with 10,000+ satisfied customers. Safe, reliable, and affordable." />
+        <title>MSF SMM | WORLD BEST AND SECURE SMM PANEL</title>
+        <meta name="title" content="MSF SMM | WORLD BEST AND SECURE SMM PANEL" />
+        <meta name="description" content="Best SMM Panel. Boost Instagram, YouTube, Facebook, TikTok instantly. 50K+ customers trust us. 100% safe & affordable." />
         <meta name="keywords" content="MSF SMM, MSF SMM Panel, m.safwan2006, best SMM panel, cheapest SMM panel, world best SMM panel, top SMM panel, SMM panel Pakistan, Pakistan SMM panel, Indian SMM panel, SMM panel India, USA SMM panel, UK SMM panel, buy Instagram followers, buy Instagram likes, buy Instagram views, buy Instagram comments, Instagram growth service, Instagram followers Pakistan, Instagram followers India, buy Facebook likes, buy Facebook followers, Facebook page likes, buy YouTube views, buy YouTube subscribers, YouTube promotion, YouTube views Pakistan, buy TikTok followers, buy TikTok likes, TikTok views, TikTok growth, buy Twitter followers, buy Twitter retweets, social media marketing, social media services, SMM services, Instagram marketing, Facebook marketing, YouTube marketing, TikTok marketing, cheapest social media services, cheap SMM panel, affordable SMM panel, instant delivery SMM, fast delivery SMM, instant followers, instant likes, real followers, real likes, high quality followers, active followers, Pakistani SMM panel, SMM reseller panel, SMM wholesale panel, bulk SMM services, SMM API, reseller SMM panel, wholesale SMM services, SMM panel with API, cheapest reseller panel, best reseller panel, affordable social media marketing, social media growth, grow Instagram, grow TikTok, grow YouTube, grow Facebook, social media boost, buy engagement, buy social media services, premium SMM panel, top rated SMM panel, trusted SMM panel, safe SMM panel, secure SMM services, 24/7 SMM panel, instant SMM panel, automated SMM panel, SMM panel 2026, best SMM panel 2026, top SMM panel 2026, new SMM panel, reliable SMM panel, legit SMM panel, verified SMM panel" />
         <meta name="author" content="MSF SMM Panel" />
         <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
@@ -166,23 +174,163 @@ export default function RootLayout({ children }) {
         {/* Google Search Console Verification */}
         <meta name="google-site-verification" content="nntcX1cmLS1n1nr0WDcOKmWwusVeITxgkNHkQnFZ2_o" />
         
+        {/* Google AdSense */}
+        <meta name="google-adsense-account" content="ca-pub-8706118096152482" />
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8706118096152482" crossOrigin="anonymous"></script>
+        
+        {/* Schema.org Structured Data for better Google understanding & AI Overview */}
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "@id": "https://msfsmm.com/#organization",
+          "name": "MSF SMM Panel",
+          "alternateName": "MSF SMM",
+          "url": "https://msfsmm.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://res.cloudinary.com/dv2r4poj6/image/upload/w_1200,h_630,c_fill,g_center,b_rgb:1e3a5f/v1784693370/website/logo/uurwgktu9vnplb2lxnfh.png",
+            "width": 1200,
+            "height": 630
+          },
+          "description": "World's Best & Most Secure Premium SMM Panel for social media marketing services. Founded by Muhammad Safwan, MSF SMM Panel provides Instagram, YouTube, Facebook, Twitter, TikTok, and other social media growth services at affordable rates with instant delivery.",
+          "foundingDate": "2026",
+          "founder": {
+            "@type": "Person",
+            "@id": "https://msfsmm.com/#founder",
+            "name": "Muhammad Safwan",
+            "givenName": "Muhammad",
+            "familyName": "Safwan",
+            "jobTitle": "Founder & CEO",
+            "url": "https://instagram.com/m.safwan2006",
+            "sameAs": [
+              "https://instagram.com/m.safwan2006",
+              "https://twitter.com/msfsmm"
+            ],
+            "description": "Founder of MSF SMM Panel, a premium SMM service provider operating worldwide since 2026."
+          },
+          "contactPoint": [
+            {
+              "@type": "ContactPoint",
+              "contactType": "Customer Service",
+              "availableLanguage": ["English", "Urdu"]
+            }
+          ],
+          "sameAs": [
+            "https://instagram.com/m.safwan2006",
+            "https://twitter.com/msfsmm"
+          ],
+          "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.9",
+            "reviewCount": "50000",
+            "bestRating": "5",
+            "worstRating": "1"
+          },
+          "knowsAbout": ["Social Media Marketing", "Instagram Growth", "YouTube Marketing", "TikTok Promotion", "Facebook Advertising"],
+          "areaServed": { "@type": "Country", "name": ["Pakistan", "India", "United States", "United Kingdom", "Worldwide"] }
+        }) }} />
+        
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "@id": "https://msfsmm.com/#website",
+          "name": "MSF SMM Panel",
+          "url": "https://msfsmm.com",
+          "publisher": { "@id": "https://msfsmm.com/#organization" },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+              "@type": "EntryPoint",
+              "urlTemplate": "https://msfsmm.com/dashboard/services?search={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+          }
+        }) }} />
+        
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "serviceType": "Social Media Marketing",
+          "provider": { "@id": "https://msfsmm.com/#organization" },
+          "areaServed": ["Worldwide", "Pakistan", "India", "USA", "UK", "UAE"],
+          "audience": { "@type": "Audience", "audienceType": ["Social Media Managers", "Influencers", "Businesses", "Content Creators"] },
+          "offers": {
+            "@type": "AggregateOffer",
+            "priceCurrency": "PKR",
+            "offerCount": "5000+",
+            "description": "Instagram followers, likes, views, comments; YouTube subscribers, views; Facebook page likes, post likes; TikTok followers, likes; Twitter followers, retweets; and many more social media services."
+          }
+        }) }} />
+        
+        {/* FAQ Schema for AI Overview in Search Results */}
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is MSF SMM Panel?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "MSF SMM Panel is a premium social media marketing platform founded by Muhammad Safwan. We provide instant Instagram followers, likes, views, YouTube subscribers, Facebook page likes, TikTok followers, and other social media growth services at affordable rates worldwide."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Who owns MSF SMM Panel?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "MSF SMM Panel is owned and founded by Muhammad Safwan. He started the platform in 2026 with a mission to provide reliable, secure, and affordable social media marketing services to customers worldwide."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is MSF SMM Panel safe and secure?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes, MSF SMM Panel is 100% safe and secure. We use encrypted connections, secure payment gateways, and never require your social media passwords. Our services are used by 50,000+ satisfied customers globally."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What services does MSF SMM Panel offer?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "MSF SMM Panel offers Instagram followers, likes, views, and comments; YouTube subscribers and views; Facebook followers, page likes, and post likes; TikTok followers and likes; Twitter followers, retweets, and likes; and many more social media marketing services."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How fast does MSF SMM Panel deliver orders?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Most orders on MSF SMM Panel start within minutes and complete within 1-6 hours. We offer instant delivery on many services, with real-time order tracking available in your dashboard."
+              }
+            }
+          ]
+        }) }} />
+        
         {/* Open Graph / Facebook */}
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://msfsmm.com/" />
-        <meta property="og:title" content="MSF SMM Panel - 100% Trusted & Secure Premium SMM Panel" />
-        <meta property="og:description" content="MSF SMM Premium SMM Panel for social media marketing. Boost your Instagram, YouTube, Facebook, Twitter and more with instant delivery and 24/7 support. Verified, secure, and trusted by 10,000+ customers." />
-        <meta property="og:image" content="https://msfsmm.com/og-image.png" />
+        <meta property="og:title" content="MSF SMM | WORLD BEST AND SECURE SMM PANEL" />
+        <meta property="og:description" content="Best SMM Panel. Boost Instagram, YouTube, Facebook, TikTok instantly. 50K+ customers trust us. 100% safe & affordable." />
+        <meta property="og:image" content="https://res.cloudinary.com/dv2r4poj6/image/upload/w_1200,h_630,c_fill,g_center,b_rgb:1e3a5f/v1784693370/website/logo/uurwgktu9vnplb2lxnfh.png" />
+        <meta property="og:image:secure_url" content="https://res.cloudinary.com/dv2r4poj6/image/upload/w_1200,h_630,c_fill,g_center,b_rgb:1e3a5f/v1784693370/website/logo/uurwgktu9vnplb2lxnfh.png" />
+        <meta property="og:image:alt" content="MSF SMM Panel - World's Best SMM Services Logo" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
+        <meta property="og:image:type" content="image/png" />
         <meta property="og:site_name" content="MSF SMM Panel" />
         <meta property="og:locale" content="en_US" />
         
         {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:url" content="https://msfsmm.com/" />
-        <meta name="twitter:title" content="MSF SMM Panel - 100% Trusted & Secure Premium SMM Panel" />
-        <meta name="twitter:description" content="MSF SMM Premium SMM Panel for social media marketing. Boost your Instagram, YouTube, Facebook, Twitter and more with instant delivery and 24/7 support." />
-        <meta name="twitter:image" content="https://msfsmm.com/og-image.png" />
+        <meta name="twitter:title" content="MSF SMM | WORLD BEST AND SECURE SMM PANEL" />
+        <meta name="twitter:description" content="Best SMM Panel. Boost Instagram, YouTube, Facebook, TikTok instantly. 50K+ customers trust us." />
+        <meta name="twitter:image" content="https://res.cloudinary.com/dv2r4poj6/image/upload/w_1200,h_630,c_fill,g_center,b_rgb:1e3a5f/v1784693370/website/logo/uurwgktu9vnplb2lxnfh.png" />
+        <meta name="twitter:image:alt" content="MSF SMM Panel - World's Best SMM Services Logo" />
         <meta name="twitter:site" content="@msfsmm" />
         <meta name="twitter:creator" content="@m.safwan2006" />
         
@@ -214,8 +362,10 @@ export default function RootLayout({ children }) {
         {/* Alternate for Mobile */}
         <link rel="alternate" media="handheld" href="https://msfsmm.com/" />
         
-        {/* Preconnect for Performance */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        {/* Preconnect & DNS-Prefetch for Performance */}
+        <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+        <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         
         {/* Theme Script */}

@@ -8,7 +8,7 @@ import {
   onSnapshot, query, where,
   serverTimestamp, Timestamp, writeBatch, updateDoc,
 } from 'firebase/firestore';
-import { FiMessageCircle, FiX, FiSend, FiPaperclip, FiImage } from 'react-icons/fi';
+import { FiMessageCircle, FiXCircle, FiSend, FiPaperclip, FiImage } from 'react-icons/fi';
 import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -126,6 +126,7 @@ export default function SupportButton() {
     if (!user) return;
     setOpen(true);
     setChatReady(false);
+    window.dispatchEvent(new Event('msf:chat-open'));
 
     const chatRef = doc(db, 'supportChats', user.uid);
     const snap = await getDoc(chatRef);
@@ -134,6 +135,7 @@ export default function SupportButton() {
         userId:    user.uid,
         userEmail: user.email || '',
         userName:  userProfile?.displayName || user.displayName || user.email?.split('@')[0] || 'User',
+        userPhotoURL: userProfile?.photoURL || user.photoURL || '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastMessage: '',
@@ -144,7 +146,12 @@ export default function SupportButton() {
         lastSeenAt: serverTimestamp(),
       });
     } else {
-      await updateDoc(chatRef, { unreadUser: 0, lastSeenAt: serverTimestamp() });
+      // Update existing chat with latest photoURL in case user changed it
+      await updateDoc(chatRef, { 
+        unreadUser: 0, 
+        lastSeenAt: serverTimestamp(),
+        userPhotoURL: userProfile?.photoURL || user.photoURL || '',
+      });
     }
     setUnread(0);
     setChatReady(true);
@@ -154,6 +161,7 @@ export default function SupportButton() {
   // ── close ─────────────────────────────────────────────────────────────────
   const closeChat = async () => {
     setOpen(false);
+    window.dispatchEvent(new Event('msf:chat-close'));
     unsubMsg.current?.();
     if (user) {
       updateDoc(doc(db, 'supportChats', user.uid), {
@@ -252,21 +260,21 @@ export default function SupportButton() {
 
   return (
     <>
-      {/* Floating button - Dashboard theme color */}
-      <div className="fixed bottom-6 right-6 z-50">
+      {/* Floating button - Dashboard theme color (smaller on mobile, right side) */}
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
         {!open && (
           <button
             onClick={openChat}
-            className="relative w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 text-white"
+            className="relative w-11 h-11 sm:w-14 sm:h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 text-white"
             style={{
               background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
               boxShadow: '0 8px 32px rgba(37, 99, 235, 0.4)'
             }}
             aria-label="Support"
           >
-            <FiMessageCircle size={26} />
+            <FiMessageCircle className="w-5 h-5 sm:w-[26px] sm:h-[26px]" />
             {unread > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center animate-pulse">
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-4 sm:min-w-[20px] sm:h-5 px-1 rounded-full bg-red-500 text-white text-[10px] sm:text-xs font-bold flex items-center justify-center animate-pulse">
                 {unread > 99 ? '99+' : unread}
               </span>
             )}
@@ -274,17 +282,16 @@ export default function SupportButton() {
         )}
       </div>
 
-      {/* Chat window - Theme aware */}
+      {/* Chat window - Theme aware (full width on mobile) */}
       {open && (
         <div
-          className={`fixed bottom-6 right-6 z-50 flex flex-col rounded-2xl overflow-hidden shadow-2xl ${
+          className={`fixed bottom-4 right-4 left-4 sm:left-auto sm:right-6 z-50 flex flex-col rounded-2xl overflow-hidden shadow-2xl h-[calc(100dvh-130px)] sm:h-[560px] w-auto sm:w-[370px] ${
             isDark 
               ? 'bg-dark-900 border-primary-500/20' 
               : 'bg-white border-dark-200'
           } border`}
-          style={{ width: '370px', maxWidth: 'calc(100vw - 24px)', height: '560px', maxHeight: 'calc(100vh - 80px)' }}
+          style={{ maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 80px)' }}
         >
-          {/* Header - Dashboard theme */}
           <div className="flex items-center justify-between px-4 py-3 flex-shrink-0"
             style={{
               background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)'
@@ -297,7 +304,7 @@ export default function SupportButton() {
               </span>
             </div>
             <button onClick={closeChat} className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors">
-              <FiX size={18} />
+              <FiXCircle size={18} />
             </button>
           </div>
 

@@ -8,7 +8,7 @@ import { updateUserProfile } from '@/firebase/firestore';
 import { FiLock, FiMail, FiEye, FiEyeOff, FiUser, FiCamera, FiUpload, FiShield } from 'react-icons/fi';
 import { Spinner } from '@/components/common/Loader';
 import toast from 'react-hot-toast';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
 
@@ -53,6 +53,7 @@ export default function SettingsPage() {
   const [backupCodes, setBackupCodes] = useState([]);
   const [showBackupCodes, setShowBackupCodes] = useState(false);
   const [twoFactorLoading, setTwoFactorLoading] = useState(false);
+  const inputRefs = useRef([]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -315,68 +316,40 @@ export default function SettingsPage() {
 
   // ==================== 2FA TOTP FUNCTIONS ====================
   
-  const generateSecret = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    let secret = '';
-    for (let i = 0; i < 32; i++) {
-      secret += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return secret;
-  };
-
-  const generateBackupCodes = () => {
-    const codes = [];
-    for (let i = 0; i < 10; i++) {
-      const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-      codes.push(code);
-    }
-    return codes;
-  };
-
   const handleEnable2FA = async () => {
     setTwoFactorLoading(true);
     try {
-      const newSecret = generateSecret();
-      const codes = generateBackupCodes();
+      // Get Firebase ID token for authentication
+      const token = await user.getIdToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       
-      // Generate QR code URL for TOTP
-      const issuer = 'MSF SMM';
-      const accountName = user.email;
-      const otpauthUrl = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}?secret=${newSecret}&issuer=${encodeURIComponent(issuer)}`;
+      // Call backend to generate secure secret and QR code
+      const response = await fetch(`${apiUrl}/api/user/2fa/setup`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to setup 2FA');
+      }
+
+      const data = await response.json();
       
-      // Use QR Server API (more reliable than Google Charts)
-      const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(otpauthUrl)}`;
-      
-      setSecret(newSecret);
-      setQrCode(qrCodeUrl);
-      setBackupCodes(codes);
+      setSecret(data.secret);
+      setQrCode(data.qrCode);
+      setBackupCodes(data.backupCodes);
       setShowBackupCodes(false);
       
       toast.success('Scan the QR code with your authenticator app');
     } catch (error) {
       console.error('2FA setup error:', error);
-      toast.error('Failed to setup 2FA');
+      toast.error('Failed to setup 2FA: ' + error.message);
     } finally {
       setTwoFactorLoading(false);
     }
-  };
-
-  const verifyTOTP = (token, secret) => {
-    // Simple TOTP verification (30-second window)
-    // This is a basic implementation - in production, use a proper library
-    const window = 1; // Allow 1 time step before/after
-    const timeStep = 30;
-    const currentTime = Math.floor(Date.now() / 1000);
-    
-    for (let i = -window; i <= window; i++) {
-      const time = Math.floor(currentTime / timeStep) + i;
-      // For demo purposes, we'll accept any 6-digit code
-      // In production, implement proper TOTP algorithm
-      if (token.length === 6 && /^\d+$/.test(token)) {
-        return true;
-      }
-    }
-    return false;
   };
 
   const handleVerify2FA = async () => {
@@ -387,23 +360,30 @@ export default function SettingsPage() {
 
     setTwoFactorLoading(true);
     try {
-      // Verify the code (simplified - in production use proper TOTP library)
-      const isValid = verifyTOTP(verificationCode, secret);
+      // Get Firebase ID token for authentication
+      const token = await user.getIdToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       
-      if (!isValid) {
-        toast.error('Invalid verification code. Please try again.');
-        setTwoFactorLoading(false);
-        return;
-      }
-
-      // Save to Firestore
-      await updateDoc(doc(db, 'users', user.uid), {
-        twoFactorEnabled: true,
-        twoFactorSecret: secret,
-        twoFactorBackupCodes: backupCodes,
-        updatedAt: new Date()
+      // Verify the code with backend (proper TOTP validation)
+      const response = await fetch(`${apiUrl}/api/user/2fa/verify`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          code: verificationCode, 
+          secret: secret 
+        })
       });
 
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Invalid verification code');
+      }
+
+      // Backend successfully verified and saved to Firestore
       setTwoFactorEnabled(true);
       setVerificationCode('');
       setQrCode('');
@@ -412,24 +392,47 @@ export default function SettingsPage() {
       toast.success('2FA enabled successfully! Save your backup codes.');
     } catch (error) {
       console.error('2FA verification error:', error);
-      toast.error('Failed to enable 2FA');
+      toast.error(error.message || 'Invalid verification code. Please try again.');
+      setVerificationCode('');
+      inputRefs.current[0]?.focus();
     } finally {
       setTwoFactorLoading(false);
     }
   };
 
   const handleDisable2FA = async () => {
+    // Ask for password confirmation for security
+    const password = prompt('⚠️ To disable 2FA, please enter your password:');
+    if (!password) {
+      toast.error('Password is required to disable 2FA');
+      return;
+    }
+
     const confirmed = window.confirm('Are you sure you want to disable 2FA? This will make your account less secure.');
     if (!confirmed) return;
 
     setTwoFactorLoading(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        twoFactorEnabled: false,
-        twoFactorSecret: null,
-        twoFactorBackupCodes: [],
-        updatedAt: new Date()
+      // Re-authenticate user first for security
+      const credential = EmailAuthProvider.credential(user.email, password);
+      await reauthenticateWithCredential(user, credential);
+      
+      // Get Firebase ID token
+      const token = await user.getIdToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      
+      // Call backend to disable 2FA
+      const response = await fetch(`${apiUrl}/api/user/2fa/disable`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to disable 2FA');
+      }
 
       setTwoFactorEnabled(false);
       setBackupCodes([]);
@@ -440,7 +443,11 @@ export default function SettingsPage() {
       toast.success('2FA disabled successfully');
     } catch (error) {
       console.error('2FA disable error:', error);
-      toast.error('Failed to disable 2FA');
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        toast.error('Wrong password! 2FA disable cancelled.');
+      } else {
+        toast.error('Failed to disable 2FA: ' + error.message);
+      }
     } finally {
       setTwoFactorLoading(false);
     }
@@ -904,7 +911,7 @@ export default function SettingsPage() {
                   <FiShield className="text-yellow-600 dark:text-yellow-400 text-xl mt-1" />
                   <div>
                     <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-300 mb-1">
-                      Save Your Backup Codes
+                      ⚠️ IMPORTANT: Save Your Backup Codes
                     </p>
                     <p className="text-xs text-yellow-800 dark:text-yellow-400">
                       Store these codes in a safe place. You can use them to access your account if you lose your authenticator device.
@@ -918,6 +925,20 @@ export default function SettingsPage() {
                     </div>
                   ))}
                 </div>
+                
+                {/* Security Warning */}
+                <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700">
+                  <p className="text-xs font-bold text-red-800 dark:text-red-300 mb-2">
+                    🔒 SECURITY WARNING
+                  </p>
+                  <ul className="text-xs text-red-700 dark:text-red-400 space-y-1 ml-4 list-disc">
+                    <li>Store codes in a password manager or secure location</li>
+                    <li>Never share these codes with anyone</li>
+                    <li>Each backup code can only be used once</li>
+                    <li>Delete the downloaded file after storing securely</li>
+                  </ul>
+                </div>
+                
                 <div className="flex gap-3">
                   <button
                     onClick={copyBackupCodes}

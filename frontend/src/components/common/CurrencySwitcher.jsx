@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useCurrency } from '@/context/CurrencyContext';
-import { FiChevronDown, FiRefreshCw, FiX } from 'react-icons/fi';
+import { FiChevronDown, FiRefreshCw, FiXCircle } from 'react-icons/fi';
 
 export default function CurrencySwitcher() {
   const { currency, setCurrency, currencies, currentCurrency, loading, fetchRates } = useCurrency();
@@ -45,7 +45,7 @@ export default function CurrencySwitcher() {
                 className="md:hidden p-1 rounded-lg bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 transition-all"
                 aria-label="Close"
               >
-                <FiX className="text-sm" />
+                <FiXCircle className="text-sm" />
               </button>
             </div>
             {/* Scrollable currency list */}

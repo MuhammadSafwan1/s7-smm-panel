@@ -25,6 +25,17 @@ export const useMaintenanceMode = (section) => {
         return;
       }
 
+      // Use sessionStorage (clears on tab close, refresh clears it)
+      const cacheKey = `maintenance_${section}`;
+      const cachedData = sessionStorage.getItem(cacheKey);
+      if (cachedData) {
+        const { isMaintenanceMode: cachedMode } = JSON.parse(cachedData);
+        console.log(`📦 Using cached maintenance mode for ${section} from sessionStorage`);
+        setIsMaintenanceMode(cachedMode);
+        setLoading(false);
+        return;
+      }
+
       // Fully dynamic Firebase imports to avoid circular dependency
       // and to be safe with Next.js static export.
       const { initializeApp, getApps } = await import('firebase/app');
@@ -64,7 +75,14 @@ export const useMaintenanceMode = (section) => {
           console.warn('Auth not available during maintenance check:', e);
         }
 
-        setIsMaintenanceMode(maintenanceEnabled && !isWhitelisted);
+        const finalMaintenanceMode = maintenanceEnabled && !isWhitelisted;
+        setIsMaintenanceMode(finalMaintenanceMode);
+
+        // Store in sessionStorage (clears on tab close or refresh)
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          isMaintenanceMode: finalMaintenanceMode
+        }));
+        console.log(`✅ Maintenance mode checked and cached in sessionStorage for ${section}: ${finalMaintenanceMode}`);
       } else {
         setIsMaintenanceMode(false);
       }

@@ -24,6 +24,66 @@ const generateRandomApiKey = () => {
 
 // ==================== 2FA CONTROLLERS ====================
 
+// Login 2FA verification (public endpoint - user is mid-login)
+exports.verifyLogin2FA = async (req, res) => {
+  try {
+    const { userId, code } = req.body;
+
+    if (!userId || !code) {
+      return res.status(400).json({ error: 'User ID and code are required' });
+    }
+
+    if (!/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: 'Code must be 6 digits' });
+    }
+
+    // Get user's 2FA secret from Firestore
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userData = userDoc.data();
+
+    if (!userData.twoFactorEnabled || !userData.twoFactorSecret) {
+      return res.status(400).json({ error: '2FA is not enabled for this account' });
+    }
+
+    // Verify the TOTP code
+    const verified = speakeasy.totp.verify({
+      secret: userData.twoFactorSecret,
+      encoding: 'base32',
+      token: code,
+      window: 2
+    });
+
+    if (!verified) {
+      // Check backup codes
+      const backupCodes = userData.twoFactorBackupCodes || [];
+      const codeUpper = code.toUpperCase();
+      const backupIndex = backupCodes.indexOf(codeUpper);
+
+      if (backupIndex !== -1) {
+        // Remove used backup code
+        backupCodes.splice(backupIndex, 1);
+        await db.collection('users').doc(userId).update({
+          twoFactorBackupCodes: backupCodes,
+          updatedAt: new Date()
+        });
+
+        return res.json({ success: true, method: 'backup_code' });
+      }
+
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    res.json({ success: true, method: 'totp' });
+  } catch (error) {
+    console.error('Login 2FA verification error:', error);
+    res.status(500).json({ error: 'Failed to verify 2FA code' });
+  }
+};
+
 exports.setup2FA = async (req, res) => {
   try {
     const userId = req.user.uid;

@@ -17,6 +17,7 @@ import {
   updateDoc,
   getDocs,
   getDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
 import { cachedQuery } from '@/lib/cache';
@@ -27,9 +28,14 @@ import {
   FiPaperclip,
   FiRefreshCw,
   FiCheckCircle,
-  FiX,
+  FiXCircle,
   FiUsers,
   FiInbox,
+  FiTrash2,
+  FiPlus,
+  FiX,
+  FiMail,
+  FiUser,
 } from 'react-icons/fi';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -70,7 +76,7 @@ function getInitials(name = '') {
 
 // ─── Avatar ──────────────────────────────────────────────────────────────────
 
-function Avatar({ name, size = 10 }) {
+function Avatar({ name, photoURL, size = 10 }) {
   const colors = [
     'bg-purple-600',
     'bg-blue-600',
@@ -80,6 +86,23 @@ function Avatar({ name, size = 10 }) {
     'bg-pink-600',
   ];
   const idx = name ? name.charCodeAt(0) % colors.length : 0;
+  
+  // If photoURL exists, show image instead of initials
+  if (photoURL) {
+    return (
+      <div
+        className="rounded-full flex-shrink-0 overflow-hidden border-2 border-purple-500/30"
+        style={{ minWidth: `${size * 4}px`, minHeight: `${size * 4}px`, width: `${size * 4}px`, height: `${size * 4}px` }}
+      >
+        <img
+          src={photoURL}
+          alt={name || 'User'}
+          className="w-full h-full object-cover"
+        />
+      </div>
+    );
+  }
+  
   return (
     <div
       className={`w-${size} h-${size} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 ${colors[idx]}`}
@@ -105,6 +128,14 @@ export default function AdminSupportPage() {
   const [sending, setSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [isDark, setIsDark] = useState(false);
+  const [userPhotoFallback, setUserPhotoFallback] = useState({});
+  
+  // New conversation modal states
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
+  const [allUsers, setAllUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [filteredUsers, setFilteredUsers] = useState([]);
 
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -220,8 +251,19 @@ export default function AdminSupportPage() {
       await updateDoc(doc(db, 'supportChats', chatId), {
         unreadAdmin: 0,
       }).catch(() => {});
+      // Fetch user photoURL fallback if missing from chat doc
+      const chat = chats.find((c) => c.id === chatId);
+      if (chat && !chat.userPhotoURL && !userPhotoFallback[chatId]) {
+        try {
+          const userSnap = await getDoc(doc(db, 'users', chatId));
+          if (userSnap.exists()) {
+            const url = userSnap.data().photoURL || '';
+            if (url) setUserPhotoFallback((p) => ({ ...p, [chatId]: url }));
+          }
+        } catch {}
+      }
     },
-    [subscribeMessages]
+    [subscribeMessages, chats, userPhotoFallback]
   );
 
   // ── send message (admin) ───────────────────────────────────────────────────
@@ -320,11 +362,141 @@ export default function AdminSupportPage() {
     });
   };
 
+  // ── delete chat ────────────────────────────────────────────────────────────
+  const deleteChat = async (chatId, e) => {
+    e?.stopPropagation(); // Prevent selecting chat when clicking delete
+    
+    if (!confirm('Are you sure you want to delete this chat? This will remove all messages.')) {
+      return;
+    }
+
+    try {
+      // Delete all messages associated with this chat
+      const messagesQuery = query(
+        collection(db, 'supportMessages'),
+        where('chatId', '==', chatId)
+      );
+      const messagesSnap = await cachedQuery('collection:supportMessages-' + chatId, () => getDocs(messagesQuery), 30000);
+      const batch = writeBatch(db);
+      
+      messagesSnap.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      // Delete the chat document
+      batch.delete(doc(db, 'supportChats', chatId));
+      
+      await batch.commit();
+
+      // If this was the selected chat, clear selection
+      if (selectedChatId === chatId) {
+        setSelectedChatId(null);
+        setMessages([]);
+      }
+    } catch (err) {
+      console.error('Delete chat error:', err);
+      alert('Failed to delete chat. Please try again.');
+    }
+  };
+
   // ── keyboard handler ───────────────────────────────────────────────────────
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    }
+  };
+
+  // ── Load all registered users ─────────────────────────────────────────────
+  const loadAllUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const usersList = usersSnap.docs.map(doc => ({
+        uid: doc.id,
+        email: doc.data().email,
+        displayName: doc.data().displayName || doc.data().email?.split('@')[0] || 'User',
+        photoURL: doc.data().photoURL || null,
+        banned: doc.data().banned || false,
+        disabled: doc.data().disabled || false,
+      })).filter(u => !u.banned && !u.disabled); // Filter out banned/disabled users
+      
+      setAllUsers(usersList);
+      // Initially show only first 25 users
+      setFilteredUsers(usersList.slice(0, 25));
+    } catch (err) {
+      console.error('Error loading users:', err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // ── Filter users based on search ──────────────────────────────────────────
+  useEffect(() => {
+    if (!userSearch.trim()) {
+      // No search, show only first 25 users
+      setFilteredUsers(allUsers.slice(0, 25));
+      return;
+    }
+    
+    const s = userSearch.toLowerCase();
+    // When searching, search through ALL users
+    const filtered = allUsers.filter(u => 
+      u.displayName.toLowerCase().includes(s) || 
+      u.email.toLowerCase().includes(s)
+    );
+    setFilteredUsers(filtered);
+  }, [userSearch, allUsers]);
+
+  // ── Create new conversation with user ─────────────────────────────────────
+  const startChatWithUser = async (selectedUser) => {
+    try {
+      // Check if chat already exists
+      const existingChat = chats.find(c => c.id === selectedUser.uid);
+      
+      if (existingChat) {
+        // Chat exists, just select it
+        setShowNewChatModal(false);
+        setUserSearch('');
+        selectChat(existingChat.id);
+        return;
+      }
+
+      // Create new chat document
+      const chatRef = doc(db, 'supportChats', selectedUser.uid);
+      
+      const chatData = {
+        userId: selectedUser.uid,
+        userName: selectedUser.displayName,
+        userEmail: selectedUser.email,
+        userPhotoURL: selectedUser.photoURL || '',
+        status: 'open',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastMessage: '',
+        lastMessageAt: Timestamp.now(),
+        unreadUser: 0,
+        unreadAdmin: 0,
+      };
+
+      console.log('Creating chat with data:', chatData);
+      await setDoc(chatRef, chatData);
+      console.log('Chat created successfully!');
+
+      // Close modal and select the new chat
+      setShowNewChatModal(false);
+      setUserSearch('');
+      
+      // Wait a bit for Firestore to sync
+      setTimeout(() => {
+        selectChat(selectedUser.uid);
+      }, 500);
+      
+    } catch (err) {
+      console.error('Error starting chat:', err);
+      console.error('Error code:', err.code);
+      console.error('Error message:', err.message);
+      alert(`Failed to start conversation: ${err.message}`);
     }
   };
 
@@ -344,6 +516,7 @@ export default function AdminSupportPage() {
   });
 
   const selectedChat = chats.find((c) => c.id === selectedChatId);
+  const userPhoto = selectedChat?.userPhotoURL || (selectedChatId ? userPhotoFallback[selectedChatId] : '');
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] min-h-0">
@@ -378,6 +551,17 @@ export default function AdminSupportPage() {
             </div>
           </div>
         </div>
+        <button
+          onClick={() => {
+            setShowNewChatModal(true);
+            loadAllUsers();
+          }}
+          className="glass-card px-4 py-2 flex items-center gap-2 text-sm text-white hover:bg-blue-600/20 transition-colors"
+          style={{ background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)' }}
+        >
+          <FiPlus size={15} />
+          New Chat
+        </button>
         <button
           onClick={subscribeChats}
           className="glass-card px-4 py-2 flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
@@ -424,10 +608,9 @@ export default function AdminSupportPage() {
               </div>
             ) : (
               filteredChats.map((chat) => (
-                <button
+                <div
                   key={chat.id}
-                  onClick={() => selectChat(chat.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-3 transition-colors text-left border-b ${
+                  className={`w-full flex items-center gap-2 px-3 py-3 transition-colors border-b group ${
                     selectedChatId === chat.id
                       ? 'border-transparent'
                       : 'hover:bg-white/5 border-transparent'
@@ -439,29 +622,43 @@ export default function AdminSupportPage() {
                     borderBottomColor: 'rgba(255,255,255,0.04)'
                   }}
                 >
-                  <Avatar name={chat.userName || chat.userEmail} size={10} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-sm font-medium text-white truncate">
-                        {chat.userName || 'User'}
-                      </span>
-                      <span className="text-[10px] text-gray-500 flex-shrink-0">
-                        {formatTime(chat.lastMessageAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-1 mt-0.5">
-                      <span className="text-xs text-gray-400 truncate">
-                        {chat.lastMessage || 'No messages'}
-                      </span>
-                      {chat.unreadAdmin > 0 && (
-                        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                          {chat.unreadAdmin > 99 ? '99+' : chat.unreadAdmin}
+                  <button
+                    onClick={() => selectChat(chat.id)}
+                    className="flex items-center gap-3 flex-1 text-left min-w-0"
+                  >
+                    <Avatar name={chat.userName || chat.userEmail} photoURL={chat.userPhotoURL || userPhotoFallback[chat.id]} size={10} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-sm font-medium text-white truncate">
+                          {chat.userName || 'User'}
                         </span>
-                      )}
+                        <span className="text-[10px] text-gray-500 flex-shrink-0">
+                          {formatTime(chat.lastMessageAt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-1 mt-0.5">
+                        <span className="text-xs text-gray-400 truncate">
+                          {chat.lastMessage || 'No messages'}
+                        </span>
+                        {chat.unreadAdmin > 0 && (
+                          <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                            {chat.unreadAdmin > 99 ? '99+' : chat.unreadAdmin}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-600 truncate">{chat.userEmail}</span>
                     </div>
-                    <span className="text-[10px] text-gray-600 truncate">{chat.userEmail}</span>
-                  </div>
-                </button>
+                  </button>
+                  
+                  {/* Delete button - shows on hover */}
+                  <button
+                    onClick={(e) => deleteChat(chat.id, e)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 flex-shrink-0"
+                    aria-label="Delete chat"
+                  >
+                    <FiTrash2 size={14} />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -490,7 +687,7 @@ export default function AdminSupportPage() {
                 style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)' }}
               >
                 <div className="flex items-center gap-3">
-                  <Avatar name={selectedChat?.userName || selectedChat?.userEmail} size={10} />
+                  <Avatar name={selectedChat?.userName || selectedChat?.userEmail} photoURL={userPhoto} size={10} />
                   <div>
                     <p className="text-white font-semibold text-sm">
                       {selectedChat?.userName || 'User'}
@@ -537,11 +734,14 @@ export default function AdminSupportPage() {
                         className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                       >
                         {!isAdmin && (
-                          <span className={`text-[10px] font-medium ml-1 mb-0.5 ${
-                            isDark ? 'text-primary-400' : 'text-primary-600'
-                          }`}>
-                            {selectedChat?.userName || 'User'}
-                          </span>
+                          <div className="flex items-center gap-2 mb-1 ml-1">
+                            <Avatar name={selectedChat?.userName || 'User'} photoURL={userPhoto} size={6} />
+                            <span className={`text-[10px] font-medium ${
+                              isDark ? 'text-primary-400' : 'text-primary-600'
+                            }`}>
+                              {selectedChat?.userName || 'User'}
+                            </span>
+                          </div>
                         )}
                         <div
                           className={`max-w-[70%] px-3 py-2 text-sm text-white break-words ${
@@ -675,6 +875,125 @@ export default function AdminSupportPage() {
           )}
         </div>
       </div>
+
+      {/* New Conversation Modal */}
+      {showNewChatModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div 
+            className="bg-white dark:bg-dark-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col border border-dark-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-dark-700 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
+                  <FiPlus className="text-white" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Start New Conversation</h3>
+                  <p className="text-sm text-gray-400">Search and select a user to message</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowNewChatModal(false);
+                  setUserSearch('');
+                }}
+                className="p-2 rounded-lg hover:bg-dark-700 text-gray-400 hover:text-white transition-colors"
+              >
+                <FiX size={20} />
+              </button>
+            </div>
+
+            {/* Search Box */}
+            <div className="p-6 border-b border-dark-700 flex-shrink-0">
+              <div className="flex items-center gap-3 bg-dark-900 rounded-xl px-4 py-3 border border-dark-700">
+                <FiSearch className="text-gray-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="flex-1 bg-transparent text-white placeholder-gray-500 outline-none text-sm"
+                  autoFocus
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {userSearch 
+                  ? `${filteredUsers.length} user${filteredUsers.length !== 1 ? 's' : ''} found` 
+                  : `Showing first 25 users (${allUsers.length} total)`
+                }
+              </p>
+            </div>
+
+            {/* Users List */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingUsers ? (
+                <div className="flex items-center justify-center py-12">
+                  <Spinner size="sm" />
+                  <span className="ml-3 text-gray-400">Loading users...</span>
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <FiUsers className="text-gray-600 mb-4" size={48} />
+                  <p className="text-gray-400 text-sm">
+                    {userSearch ? 'No users found matching your search' : 'No users registered yet'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredUsers.map((u) => {
+                    const hasExistingChat = chats.find(c => c.id === u.uid);
+                    return (
+                      <button
+                        key={u.uid}
+                        onClick={() => startChatWithUser(u)}
+                        className="w-full flex items-center gap-4 p-4 rounded-xl bg-dark-900 border border-dark-700 hover:border-blue-500 hover:bg-dark-700 transition-all group"
+                      >
+                        <div className="relative">
+                          {u.photoURL ? (
+                            <img
+                              src={u.photoURL}
+                              alt={u.displayName}
+                              className="w-12 h-12 rounded-full object-cover border-2 border-blue-500/30 group-hover:border-blue-500"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg border-2 border-blue-500/30 group-hover:border-blue-500">
+                              {getInitials(u.displayName)}
+                            </div>
+                          )}
+                          {hasExistingChat && (
+                            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-green-500 border-2 border-dark-900 flex items-center justify-center">
+                              <FiCheckCircle size={12} className="text-white" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 text-left min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-semibold text-white truncate">{u.displayName}</p>
+                            {hasExistingChat && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-medium">
+                                Active Chat
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-400 truncate flex items-center gap-1">
+                            <FiMail size={12} />
+                            {u.email}
+                          </p>
+                        </div>
+                        <div className="text-blue-400 group-hover:text-blue-300 transition-colors">
+                          <FiMessageSquare size={20} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

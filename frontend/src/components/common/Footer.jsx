@@ -5,21 +5,26 @@ import { useState, useEffect } from 'react';
 import { FiPackage, FiMail, FiMapPin, FiPhone, FiGlobe, FiArrowUpRight } from 'react-icons/fi';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
+import { cachedQuery } from '@/lib/cache';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
   const [siteLogo, setSiteLogo] = useState('');
   const [siteName, setSiteName] = useState('MSF SMM PANEL');
+  const [contactPhone, setContactPhone] = useState('+92 33315546339');
+  const [contactEmail, setContactEmail] = useState('ms8347750@gmail.com');
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const snap = await getDoc(doc(db, 'siteSettings', 'general'));
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.siteLogo) setSiteLogo(data.siteLogo);
-          if (data.adminName) setSiteName(data.adminName);
-        }
+        const data = await cachedQuery('siteSettings:general', async () => {
+          const snap = await getDoc(doc(db, 'siteSettings', 'general'));
+          return snap.exists() ? snap.data() : {};
+        }, 120000);
+        if (data.siteLogo) setSiteLogo(data.siteLogo);
+        if (data.adminName) setSiteName(data.adminName);
+        if (data.contactPhone) setContactPhone(data.contactPhone);
+        if (data.contactEmail) setContactEmail(data.contactEmail);
       } catch (e) {
         console.error('Footer settings fetch error:', e);
       }
@@ -56,14 +61,14 @@ export default function Footer() {
                   <FiPackage className="text-white text-3xl" />
                 </div>
               )}
-              <span className="text-2xl lg:text-3xl font-bold text-white tracking-tight">{siteName}</span>
+              <span className="text-2xl lg:text-3xl font-bold text-white tracking-tight">MSF SMM</span>
             </Link>
             <p className="text-sm lg:text-base text-dark-400 leading-relaxed max-w-md">
               Premium SMM Panel for social media marketing. Boost your Instagram, YouTube, Facebook, Twitter and more with instant delivery and 24/7 support.
             </p>
             <div className="flex items-center gap-3 pt-2">
               <a
-                href="https://wa.me/923345216246"
+                href={`https://wa.me/${contactPhone.replace(/[^0-9]/g, '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-11 h-11 rounded-lg bg-dark-800 hover:bg-green-600 flex items-center justify-center text-dark-400 hover:text-white transition-all shadow-lg hover:shadow-green-600/30"
@@ -72,7 +77,7 @@ export default function Footer() {
                 <FiPhone size={20} />
               </a>
               <a
-                href="mailto:ms8347750@gmail.com"
+                href={`mailto:${contactEmail}`}
                 className="w-11 h-11 rounded-lg bg-dark-800 hover:bg-primary-600 flex items-center justify-center text-dark-400 hover:text-white transition-all shadow-lg hover:shadow-primary-600/30"
                 aria-label="Email"
               >
@@ -129,7 +134,7 @@ export default function Footer() {
             <ul className="space-y-5">
               <li>
                 <a
-                  href="https://wa.me/923345216246"
+                  href={`https://wa.me/${contactPhone.replace(/[^0-9]/g, '')}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-start gap-3 text-sm lg:text-base text-dark-400 hover:text-green-400 transition-colors group"
@@ -137,19 +142,19 @@ export default function Footer() {
                   <FiPhone className="mt-1 flex-shrink-0 text-green-500 text-lg" />
                   <div>
                     <span className="font-semibold text-white text-sm block mb-1">WhatsApp</span>
-                    +92 3345216246
+                    {contactPhone}
                   </div>
                 </a>
               </li>
               <li>
                 <a
-                  href="mailto:ms8347750@gmail.com"
+                  href={`mailto:${contactEmail}`}
                   className="flex items-start gap-3 text-sm lg:text-base text-dark-400 hover:text-primary-400 transition-colors group"
                 >
                   <FiMail className="mt-1 flex-shrink-0 text-primary-500 text-lg" />
                   <div>
                     <span className="font-semibold text-white text-sm block mb-1">Email</span>
-                    ms8347750@gmail.com
+                    {contactEmail}
                   </div>
                 </a>
               </li>
@@ -167,7 +172,7 @@ export default function Footer() {
         {/* Bottom Bar */}
         <div className="border-t border-dark-800 mt-16 pt-10 flex flex-col md:flex-row items-center justify-between gap-6">
           <p className="text-sm lg:text-base text-dark-500">
-            &copy; {currentYear} <span className="text-dark-400 font-semibold">{siteName}</span>. All rights reserved.
+            &copy; {currentYear} <span className="text-dark-400 font-semibold">MSF SMM</span>. All rights reserved.
           </p>
           <div className="flex items-center gap-8">
             <Link href="/policies" className="text-sm lg:text-base text-dark-500 hover:text-primary-400 transition-colors font-medium">

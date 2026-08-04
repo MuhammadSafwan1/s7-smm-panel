@@ -5,6 +5,7 @@ import { db } from '@/firebase/firestore';
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { PageLoader } from '@/components/common/Loader';
+import { cachedQuery } from '@/lib/cache';
 
 export default function AuthLayout({ children }) {
   const [loading, setLoading] = useState(true);
@@ -17,11 +18,11 @@ export default function AuthLayout({ children }) {
 
   const checkSettings = async () => {
     try {
-      const settingsDoc = await getDoc(doc(db, 'siteSettings', 'general'));
-      if (settingsDoc.exists()) {
-        const data = settingsDoc.data();
-        setLoginEnabled(data.websiteLoginEnabled !== false);
-      }
+      const settingsData = await cachedQuery('siteSettings:general', async () => {
+        const settingsDoc = await getDoc(doc(db, 'siteSettings', 'general'));
+        return settingsDoc.exists() ? settingsDoc.data() : {};
+      });
+      setLoginEnabled(settingsData.websiteLoginEnabled !== false);
     } catch (error) {
       console.error('Error checking settings:', error);
     } finally {

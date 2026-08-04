@@ -1,25 +1,62 @@
-# MSF SMM Panel - SEO Optimized robots.txt
-# Allow all search engines to crawl everything
+# MSF SMM Panel - Robots.txt
+# Allow all search engines to crawl the site
 
 User-agent: *
 Allow: /
+Allow: /dashboard
+Allow: /auth/
+Allow: /help
+Allow: /policies
+Allow: /accounts
+
+# Allow external resources
+Allow: /_next/
+Allow: /static/
+Allow: /*.js
+Allow: /*.css
+Allow: /*.png
+Allow: /*.jpg
+Allow: /*.jpeg
+Allow: /*.gif
+Allow: /*.svg
+Allow: /*.woff
+Allow: /*.woff2
+
+# Disallow admin pages from search engines
+Disallow: /s7bHG74TY09161NJASKLPW/
+
+# Disallow API routes
+Disallow: /api/
 
 # Sitemap location
 Sitemap: https://msfsmm.com/sitemap.xml
 
-# Crawl-delay (optional - helps with slower servers)
+# Crawl-delay for all bots (optional, helps prevent server overload)
 Crawl-delay: 1
 
-# Disallow sensitive pages
-Disallow: /s7bHG74TY09161NJASKLPW/
-Disallow: /api/
-Disallow: /*.json$
-
-# Allow images
-User-agent: Googlebot-Image
-Allow: /*
-
-# Allow JavaScript and CSS
+# Specific rules for major search engines
 User-agent: Googlebot
-Allow: /*.js
-Allow: /*.css
+Allow: /
+Allow: /_next/
+Allow: /static/
+Crawl-delay: 0
+
+User-agent: Bingbot
+Allow: /
+Allow: /_next/
+Allow: /static/
+Crawl-delay: 1
+
+User-agent: Slurp
+Allow: /
+Allow: /_next/
+Allow: /static/
+Crawl-delay: 1
+
+# Allow Google Ads
+User-agent: Mediapartners-Google
+Allow: /
+
+# Allow Google AdSense
+User-agent: AdsBot-Google
+Allow: /

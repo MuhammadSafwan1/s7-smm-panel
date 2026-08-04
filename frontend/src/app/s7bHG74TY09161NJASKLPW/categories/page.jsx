@@ -4,15 +4,24 @@ import { useState, useEffect, useRef } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiLayers, FiUpload, FiX, FiLink, FiTool } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiLayers, FiUpload, FiXCircle, FiLink, FiTool, FiCloud } from 'react-icons/fi';
 import { cachedQuery, invalidateCache } from '@/lib/cache';
+import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
 
-// Same icon upload component as platforms
+// Same icon upload component as platforms (with Cloudinary option)
 function IconUpload({ value, onChange }) {
   const inputRef = useRef();
-  const [mode, setMode] = useState('upload');
+  const [mode, setMode] = useState('cloud'); // 'cloud' | 'base64' | 'url'
   const [urlInput, setUrlInput] = useState('');
   const [converting, setConverting] = useState(false);
+
+  const toBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
   const compressAndConvert = (file) =>
     new Promise((resolve, reject) => {
@@ -45,18 +54,26 @@ function IconUpload({ value, onChange }) {
 
     setConverting(true);
     try {
-      if (file.type === 'image/gif') {
-        const reader = new FileReader();
-        reader.onload = () => { onChange(reader.result); toast.success('GIF icon ready!'); setConverting(false); };
-        reader.onerror = () => { toast.error('Failed to read GIF'); setConverting(false); };
-        reader.readAsDataURL(file);
-        return;
+      if (mode === 'cloud') {
+        // Compress (keep GIF animation) then upload to Cloudinary → ZERO Firebase bandwidth
+        const payload = file.type === 'image/gif' ? await toBase64(file) : await compressAndConvert(file);
+        const { url, error } = await uploadToCloudinary(payload, 'smm-panel/icons');
+        if (url) {
+          onChange(url);
+          toast.success('☁️ Icon uploaded to Cloudinary!');
+        } else {
+          // Fallback: keep as base64 so the admin never loses the icon
+          onChange(payload);
+          toast.error(`Cloudinary failed (${error || 'upload error'}) — saved as base64`);
+        }
+      } else {
+        // Base64 mode: keep as-is (GIF) or compress
+        const base64 = file.type === 'image/gif' ? await toBase64(file) : await compressAndConvert(file);
+        onChange(base64);
+        toast.success('Icon saved (base64)');
       }
-      const base64 = await compressAndConvert(file);
-      onChange(base64);
-      toast.success('Icon ready!');
     } catch { toast.error('Failed to process image'); }
-    finally { if (file.type !== 'image/gif') setConverting(false); e.target.value = ''; }
+    finally { setConverting(false); e.target.value = ''; }
   };
 
   const handleUrlSave = () => {
@@ -69,9 +86,13 @@ function IconUpload({ value, onChange }) {
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <button type="button" onClick={() => setMode('upload')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'upload' ? 'bg-primary-500 text-white shadow-md' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
-          <FiUpload /> Upload File
+        <button type="button" onClick={() => setMode('cloud')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'cloud' ? 'bg-sky-500 text-white shadow-md' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
+          <FiCloud /> Cloudinary
+        </button>
+        <button type="button" onClick={() => setMode('base64')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'base64' ? 'bg-primary-500 text-white shadow-md' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
+          <FiUpload /> Base64
         </button>
         <button type="button" onClick={() => setMode('url')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'url' ? 'bg-primary-500 text-white shadow-md' : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-300 hover:bg-dark-200 dark:hover:bg-dark-700'}`}>
@@ -79,10 +100,17 @@ function IconUpload({ value, onChange }) {
         </button>
       </div>
 
-      {mode === 'upload' && !value && (
+      {mode === 'cloud' && !value && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-sky-900/30 border border-sky-700/40 text-sky-400 text-sm">
+          <FiCloud className="flex-shrink-0" />
+          <span>Upload to Cloudinary — free CDN, uses ZERO Firebase bandwidth</span>
+        </div>
+      )}
+
+      {mode === 'base64' && !value && (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-900/30 border border-green-700/40 text-green-400 text-sm">
           <FiUpload className="flex-shrink-0" />
-          <span>Select image from device (converted to base64, no external service needed)</span>
+          <span>Select image from your device (converted to base64, stored in Firestore)</span>
         </div>
       )}
 
@@ -104,11 +132,11 @@ function IconUpload({ value, onChange }) {
           <img src={value} alt="icon" className="w-14 h-14 rounded-xl object-contain bg-white dark:bg-dark-800 p-1 border border-dark-200 dark:border-dark-700" />
           <div className="flex-1">
             <p className="text-sm font-semibold text-green-700 dark:text-green-400">✓ Icon ready</p>
-            <p className="text-xs text-dark-400 mt-0.5">{value.startsWith('data:') ? 'Base64 encoded' : 'URL image'}</p>
+            <p className="text-xs text-dark-400 mt-0.5">{value.startsWith('data:') ? 'Base64 encoded (Firestore)' : value.includes('cloudinary') ? '☁️ Cloudinary (off Firebase)' : 'URL image'}</p>
           </div>
-          <button type="button" onClick={() => onChange('')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"><FiX /></button>
+          <button type="button" onClick={() => onChange('')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"><FiXCircle /></button>
         </div>
-      ) : mode === 'upload' ? (
+      ) : mode !== 'url' ? (
         <>
           <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
           <button type="button" onClick={() => inputRef.current.click()} disabled={converting}
@@ -116,7 +144,7 @@ function IconUpload({ value, onChange }) {
             {converting ? (
               <><div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" /><span className="text-sm text-dark-500">Converting...</span></>
             ) : (
-              <><FiUpload className="text-3xl text-dark-400" /><span className="text-sm font-medium text-dark-600 dark:text-dark-300">Click to select image or GIF</span><span className="text-xs text-dark-400">PNG, JPG, SVG, GIF, WebP — max 2MB</span></>
+              <>{mode === 'cloud' ? <FiCloud className="text-3xl text-dark-400" /> : <FiUpload className="text-3xl text-dark-400" />}<span className="text-sm font-medium text-dark-600 dark:text-dark-300">Click to select image or GIF</span><span className="text-xs text-dark-400">PNG, JPG, SVG, GIF, WebP — max 2MB</span></>
             )}
           </button>
         </>
@@ -221,6 +249,7 @@ export default function CategoriesPage() {
     if (!confirm(`Delete "${name}"?`)) return;
     await deleteDoc(doc(db, 'categories', id));
     invalidateCache('collection:categories');
+    invalidateCache('categories:');
     toast.success('Category deleted');
     fetchData();
   };

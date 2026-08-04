@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/firebase/firestore';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
-import { FiSave, FiImage, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiTool, FiUserCheck, FiX, FiPlus, FiMessageCircle, FiUpload, FiCheck, FiAlertTriangle } from 'react-icons/fi';
+import { FiSave, FiImage, FiToggleLeft, FiToggleRight, FiLock, FiUnlock, FiTool, FiUserCheck, FiXCircle, FiPlus, FiMessageCircle, FiUpload, FiCheck, FiAlertTriangle, FiPhone, FiMail } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
-import { cachedQuery } from '@/lib/cache';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 
 const PAGE_MAINTENANCE_KEYS = [
   { key: 'dashboard', label: 'Dashboard', desc: 'Main ordering page', icon: '🏠' },
@@ -33,15 +33,28 @@ export default function AdminSettingsPage() {
     whitelistedEmails: [],
     whatsappChannelUrl: '',
     whatsappChannelEnabled: false,
+    contactPhone: '',
+    contactEmail: '',
+    instagramGuideGif: '',
   });
   const [imagePreview, setImagePreview] = useState('');
   const [logoPreview, setLogoPreview] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [allUsers, setAllUsers] = useState([]);
+  const [guideUploading, setGuideUploading] = useState(false);
 
   useEffect(() => {
     fetchSettings();
     fetchAllUsers();
+    
+    // Load Cloudinary Upload Widget script
+    if (!document.getElementById('cloudinary-upload-widget')) {
+      const script = document.createElement('script');
+      script.id = 'cloudinary-upload-widget';
+      script.src = 'https://upload-widget.cloudinary.com/global/all.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
   }, []);
 
   const fetchSettings = async () => {
@@ -61,6 +74,9 @@ export default function AdminSettingsPage() {
           whitelistedEmails: data.whitelistedEmails || [],
           whatsappChannelUrl: data.whatsappChannelUrl || 'https://whatsapp.com/channel/0029Vb5txzUJkK714Q3onN1l',
           whatsappChannelEnabled: data.whatsappChannelEnabled !== false,
+          contactPhone: data.contactPhone || '+92 33315546339',
+          contactEmail: data.contactEmail || 'ms8347750@gmail.com',
+          instagramGuideGif: data.instagramGuideGif || '',
         });
         setImagePreview(data.adminPhoto || '');
         setLogoPreview(data.siteLogo || '');
@@ -75,7 +91,7 @@ export default function AdminSettingsPage() {
 
   const fetchAllUsers = async () => {
     try {
-      const usersSnapshot = await cachedQuery('collection:users', () => getDocs(collection(db, 'users')), 30000);
+      const usersSnapshot = await cachedQuery('collection:users:all', () => getDocs(collection(db, 'users')), 30000);
       const users = usersSnapshot.docs.map(doc => ({
         id: doc.id,
         email: doc.data().email,
@@ -248,6 +264,8 @@ export default function AdminSettingsPage() {
     setSaving(true);
     try {
       await setDoc(doc(db, 'siteSettings', 'general'), settings, { merge: true });
+      invalidateCache('siteSettings:general');
+      invalidateCache('siteSettings:general:data');
       toast.success('Settings saved successfully!');
     } catch (error) {
       console.error('Error saving settings:', error);
@@ -412,7 +430,7 @@ export default function AdminSettingsPage() {
                 {logoPreview && (
                   <button onClick={() => { setLogoPreview(''); setSettings(prev => ({ ...prev, siteLogo: '' })); setLogoFile(null); }}
                     className="ml-auto p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-500/20 text-red-500 transition-colors" title="Remove logo">
-                    <FiX />
+                    <FiXCircle />
                   </button>
                 )}
               </div>
@@ -531,6 +549,121 @@ export default function AdminSettingsPage() {
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>
+            </div>
+
+            {/* Contact Information */}
+            <div className="p-4 rounded-xl bg-dark-50 dark:bg-dark-900 border border-dark-200 dark:border-dark-700">
+              <div className="flex items-center gap-2 mb-3">
+                <FiPhone className="text-blue-500" />
+                <span className="font-semibold text-dark-900 dark:text-white">
+                  Contact Information
+                </span>
+              </div>
+              <p className="text-xs text-dark-500 mb-3">
+                These contact details appear in the footer for users to reach you
+              </p>
+              
+              {/* Contact Phone */}
+              <div className="mb-3">
+                <label className="block text-xs font-semibold text-dark-700 dark:text-dark-300 mb-1">
+                  <FiPhone className="inline mr-1" /> Contact Phone
+                </label>
+                <input
+                  type="text"
+                  value={settings.contactPhone}
+                  onChange={(e) => setSettings(prev => ({ ...prev, contactPhone: e.target.value }))}
+                  placeholder="+92 33315546339"
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Contact Email */}
+              <div>
+                <label className="block text-xs font-semibold text-dark-700 dark:text-dark-300 mb-1">
+                  <FiMail className="inline mr-1" /> Contact Email
+                </label>
+                <input
+                  type="email"
+                  value={settings.contactEmail}
+                  onChange={(e) => setSettings(prev => ({ ...prev, contactEmail: e.target.value }))}
+                  placeholder="ms8347750@gmail.com"
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-dark-800 border border-dark-200 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            {/* Instagram Guide GIF */}
+            <div className="p-4 rounded-xl bg-dark-50 dark:bg-dark-900 border border-dark-200 dark:border-dark-700">
+              <div className="flex items-center gap-2 mb-3">
+                <FiImage className="text-purple-500" />
+                <span className="font-semibold text-dark-900 dark:text-white">
+                  Instagram Guide GIF
+                </span>
+              </div>
+              <p className="text-xs text-dark-500 mb-3">
+                Upload guide GIF to Cloudinary to save Firebase bandwidth (shows on dashboard)
+              </p>
+              
+              {/* Current GIF Preview */}
+              {settings.instagramGuideGif && (
+                <div className="mb-3 rounded-lg overflow-hidden border border-dark-200 dark:border-dark-700">
+                  <img 
+                    src={settings.instagramGuideGif} 
+                    alt="Instagram Guide" 
+                    className="w-full h-auto object-contain max-h-48"
+                  />
+                </div>
+              )}
+
+              {/* Cloudinary Upload (direct — no widget needed) */}
+              <input
+                id="guide-file"
+                type="file"
+                accept="image/gif,image/png,image/jpeg"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (!file.type.startsWith('image/')) { toast.error('Select an image file'); return; }
+                  if (file.size > 10 * 1024 * 1024) { toast.error('Image must be under 10MB'); return; }
+                  setGuideUploading(true);
+                  try {
+                    const { url, error } = await uploadToCloudinary(file, 'website/guides');
+                    if (url) {
+                      setSettings(prev => ({ ...prev, instagramGuideGif: url }));
+                      toast.success('GIF uploaded to Cloudinary!');
+                    } else {
+                      toast.error(error || 'Upload failed');
+                    }
+                  } catch (err) {
+                    toast.error('Upload failed: ' + err.message);
+                  } finally {
+                    setGuideUploading(false);
+                    e.target.value = '';
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => document.getElementById('guide-file')?.click()}
+                disabled={guideUploading}
+                className="w-full px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                {guideUploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <FiUpload /> Upload to Cloudinary
+                  </>
+                )}
+              </button>
+              
+              <p className="text-[10px] text-dark-400 mt-2 text-center">
+                💡 Saves 300+ KB Firebase bandwidth per user visit
+              </p>
             </div>
 
             {/* Save Button */}
@@ -719,7 +852,7 @@ export default function AdminSettingsPage() {
                       className="ml-3 p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-500/20 text-red-500 transition-colors"
                       title="Remove from whitelist"
                     >
-                      <FiX className="text-lg" />
+                      <FiXCircle className="text-lg" />
                     </button>
                   </div>
                 );

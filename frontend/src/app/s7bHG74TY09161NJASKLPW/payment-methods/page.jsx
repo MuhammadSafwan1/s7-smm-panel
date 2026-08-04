@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '@/firebase/firestore';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { cachedQuery, invalidateCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiUpload, FiX, FiLink } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiUpload, FiXCircle, FiLink } from 'react-icons/fi';
 import { useCurrency } from '@/context/CurrencyContext';
 
 import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
@@ -88,7 +89,7 @@ function IconUpload({ value, onChange }) {
             <p className="text-sm font-semibold text-green-700 dark:text-green-400">✓ Image ready</p>
             <p className="text-xs text-dark-400 mt-0.5">High Quality</p>
           </div>
-          <button type="button" onClick={() => onChange('')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"><FiX /></button>
+          <button type="button" onClick={() => onChange('')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"><FiXCircle /></button>
         </div>
       ) : mode === 'upload' ? (
         <>
@@ -213,7 +214,7 @@ export default function PaymentMethodsPage() {
 
   const fetchData = async () => {
     try {
-      const snap = await getDocs(collection(db, 'paymentMethods'));
+      const snap = await cachedQuery('collection:paymentMethods', () => getDocs(collection(db, 'paymentMethods')));
       setMethods(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.error(e); }
   };
@@ -331,6 +332,9 @@ export default function PaymentMethodsPage() {
       }
       setShowModal(false);
       fetchData();
+      invalidateCache('collection:paymentMethods');
+      invalidateCache('addFunds:paymentMethods');
+      invalidateCache('doc:paymentMethods');
     } catch (err) { toast.error(err.message || 'Failed to save'); }
     finally { setSaving(false); }
   };
@@ -341,6 +345,9 @@ export default function PaymentMethodsPage() {
       await deleteDoc(doc(db, 'paymentMethods', id));
       toast.success('Payment method deleted');
       fetchData();
+      invalidateCache('collection:paymentMethods');
+      invalidateCache('addFunds:paymentMethods');
+      invalidateCache('doc:paymentMethods');
     } catch (err) { toast.error(err.message); }
   };
 
@@ -351,6 +358,9 @@ export default function PaymentMethodsPage() {
         updatedAt: Timestamp.now(),
       });
       fetchData();
+      invalidateCache('collection:paymentMethods');
+      invalidateCache('addFunds:paymentMethods');
+      invalidateCache('doc:paymentMethods');
     } catch (err) { toast.error(err.message); }
   };
 

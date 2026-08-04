@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FiFilter, FiX } from 'react-icons/fi';
+import { FiFilter, FiXCircle } from 'react-icons/fi';
 import { getCategories } from '@/firebase/firestore';
 
 export default function AccountFilters({ filters, onFilterChange, onReset }) {
@@ -32,7 +32,7 @@ export default function AccountFilters({ filters, onFilterChange, onReset }) {
       >
         <FiFilter />
         Filters
-        {isOpen ? <FiX /> : null}
+        {isOpen ? <FiXCircle /> : null}
       </button>
 
       {/* Filter panel */}
